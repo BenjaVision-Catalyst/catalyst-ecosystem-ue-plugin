@@ -13,6 +13,9 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Planet") FTransform PlanetToWorld = FTransform::Identity;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Planet", meta=(ClampMin="0.001",Units="m")) double ReferenceRadiusMeters = 100;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Planet") int32 PlanetSeed = 1729;
+    /** Explicit generated-surface context, supplied from OceanHeight by the Planet editor. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Planet", meta=(InlineEditConditionToggle)) bool bOverrideSeaLevel = false;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Planet", meta=(EditCondition="bOverrideSeaLevel",ForceUnits="m")) double SeaLevelMeters = 0;
     /** Empty returns every classified point, including unassigned points. Valid GUID filters to its winning biome. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Biomes") FGuid TargetBiome;
     static bool ValidateFrame(const FTransform& Frame, double Radius, FString& Error);

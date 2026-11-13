@@ -76,5 +76,14 @@ bool FCEPCGTest::RunTest(const FString&)
     }
     Settings->TargetBiome=FGuid(0x43454249,0,0,2);Context=Run();const auto* Filtered=Cast<UPCGPointData>(Context->OutputData.TaggedData[0].Data);TestEqual(TEXT("Biome filter keeps both poles"),Filtered->GetPoints().Num(),2);
     Profile->Ecosystem.Climate.PoleTemperatureC=30;Context=Run();Filtered=Cast<UPCGPointData>(Context->OutputData.TaggedData[0].Data);TestEqual(TEXT("Regenerate sees edited profile"),Filtered->GetPoints().Num(),0);
+    Settings->TargetBiome.Invalidate();Profile->Ecosystem.Climate.SeaLevelMeters=-10;
+    Settings->bOverrideSeaLevel=true;Settings->SeaLevelMeters=5;Context=Run();
+    Out=Cast<UPCGPointData>(Context->OutputData.TaggedData[0].Data);
+    auto* Water=Out->Metadata->GetConstTypedAttribute<bool>(TEXT("CE_Water"));
+    for(const auto& P:Out->GetPoints())TestTrue(TEXT("Generated OceanHeight context overrides the profile water datum"),Water->GetValueFromItemKey(P.MetadataEntry));
+    TestEqual(TEXT("Guide-derived execution does not rewrite the saved profile"),Profile->Ecosystem.Climate.SeaLevelMeters,-10.);
+    Settings->bOverrideSeaLevel=false;Context=Run();Out=Cast<UPCGPointData>(Context->OutputData.TaggedData[0].Data);
+    Water=Out->Metadata->GetConstTypedAttribute<bool>(TEXT("CE_Water"));
+    for(const auto& P:Out->GetPoints())TestFalse(TEXT("Standalone PCG retains its explicit profile datum"),Water->GetValueFromItemKey(P.MetadataEntry));
     return true;
 }

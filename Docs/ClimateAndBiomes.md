@@ -1,7 +1,8 @@
 # Planet climate and biome authoring
 
 Ecosystem adds one optional section to Landform's Planet Builder. That section has
-**Climate** and **Biomes** sub-tabs. Landform owns terrain and its native VPP
+**Climate** and **Biomes** sub-tabs, using the same compact label style as Planet.
+Optional sections appear before the final Preview tab. Landform owns terrain and its native VPP
 preview; Ecosystem owns climate, habitat classification and biome presentation.
 Landform remains usable without Ecosystem.
 
@@ -14,10 +15,12 @@ alone does not create or dirty a profile. Saving the Planet Builder also saves i
 linked profile. Undo/redo covers saved climate and biome edits.
 
 Climate controls the pole axis, equatorial and polar temperatures, lapse rate,
-sea level relative to the neutral terrain surface, moisture, subtropical drying
-and seeded spherical variation. Sea level is an explicit climate offset; it is not
-automatically synchronized with Landform's OceanHeight guide. Match those values
-when the visible ocean and climate water boundary should coincide. Each biome has
+moisture, subtropical drying and seeded spherical variation. In Planet, sea level
+is a read-only **OceanHeight** guide value. The accepted terrain plan supplies its
+absolute body radius; Ecosystem converts it to the neutral-surface offset used by
+the shared evaluator. Guide edits update the preview without rewriting the stored
+climate profile. A planet without OceanHeight is dry. Standalone evaluation outside
+Planet retains the explicit profile water datum. Each biome has
 a stable ID, description, colour,
 generation checkbox, Character, seed, priority, habitat ranges and optional source
 Biome Core asset. Character expands the temperature/moisture habitat tolerance by
@@ -27,7 +30,10 @@ equal priority. Higher priority wins first. Row order has no effect.
 Eye and whole-planet Solo are session-only. They hide already classified preview
 samples; they do not alter classification or PCG generation. Unsolo restores the
 eye state from before Solo. Disabled biomes do not generate and their other row
-controls are disabled. Up to 64 biomes are admitted; uncovered locations remain
+controls are disabled. Biomes use the Landforms row style: disclosure, generation
+checkbox, bold name and small description, Character/readout, eye and reseed icons,
+and Solo/Unsolo. Expanded habitat/source settings remain owned by Ecosystem.
+Up to 64 biomes are admitted; uncovered locations remain
 unassigned instead of silently receiving a different habitat.
 
 ## Shared evaluator
@@ -83,7 +89,10 @@ It takes an explicit planet transform, neutral radius and seed. The Planet Build
 uses the asset's body frame (identity transform), `RadiusMeters + BaseHeightMeters`
 and recipe seed. Set the climate node's transform to the actual planet's world
 transform when deploying these graphs; positive uniform scale is supported. Rebuild
-or update those explicit context values after changing planet radius/seed/frame.
+or update those explicit context values after changing planet radius/seed/frame
+or OceanHeight. Planet builds set the PCG node water-datum override from the same
+accepted OceanHeight used by the preview. These are generated context snapshots;
+guide edits do not regenerate or rebind arbitrary world graphs automatically.
 A source graph containing additional processing nodes is rejected rather than
 silently discarding them. Generated assets are marked dirty for review/save;
 repeated builds create new uniquely named copies, not replacements.

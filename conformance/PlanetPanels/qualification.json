@@ -1,0 +1,70 @@
+{
+  "date": "2026-11-13",
+  "engine": "5.8.4",
+  "changelist": 58902052,
+  "platform": "Mac arm64",
+  "checks": [
+    {
+      "name": "Catalyst.Ecosystem.Climate.DeterminismAndSphericalFrame",
+      "state": "Success"
+    },
+    {
+      "name": "Catalyst.Ecosystem.Climate.ValidationAndModelRoundTrip",
+      "state": "Success"
+    },
+    {
+      "name": "Catalyst.Ecosystem.Editor.NativePlanetBuilder",
+      "state": "Success"
+    },
+    {
+      "name": "Catalyst.Ecosystem.Editor.OceanHeightDatum",
+      "state": "Success"
+    },
+    {
+      "name": "Catalyst.Ecosystem.Editor.PreviewVisibilityAndUndo",
+      "state": "Success"
+    },
+    {
+      "name": "Catalyst.Ecosystem.PCG.FieldsFilterAndPlanetTransform",
+      "state": "Success"
+    },
+    {
+      "name": "Catalyst.Landform.Installation.FreshProject",
+      "state": "Success"
+    },
+    {
+      "name": "Catalyst.Landform.Planet.LandformRows.ControlsAndPersistence",
+      "state": "Success"
+    },
+    {
+      "name": "Catalyst.Landform.PlanetBuilder.NewPlanetReference",
+      "state": "Success"
+    }
+  ],
+  "ui": [
+    "Provider and sub-tab labels use PropertyWindow.NormalFont",
+    "Biomes use the compact Landforms row style",
+    "Preview is last; internal section indices are preserved",
+    "Read-only Sea level displays the accepted OceanHeight guide"
+  ],
+  "oceanHeight": {
+    "offsetFormula": "guide.HeightMeters - plan.BaseHeightMeters",
+    "missingGuide": "Dry planet",
+    "profileMutated": false,
+    "preview": "Live accepted plan",
+    "pcg": "Generated context snapshot; rebuild after guide/radius/frame changes"
+  },
+  "evidenceDirectory": "VPPTest58/Saved/PlanetPanelFix",
+  "reviewWindow": "Actual native Planet editor; separate panel harness removed",
+  "ecosystemDisabledCheck": {
+    "name": "Catalyst.Landform.Installation.FreshProject",
+    "state": "Success",
+    "tabs": [
+      "Planet",
+      "Geology",
+      "Landforms",
+      "Preview"
+    ]
+  },
+  "authoringAssetsSavedDuringTests": false
+}

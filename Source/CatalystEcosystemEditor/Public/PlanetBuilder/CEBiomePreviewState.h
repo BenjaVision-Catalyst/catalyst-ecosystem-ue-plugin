@@ -12,5 +12,5 @@ struct FCEBiomePreviewState
         if(Solo.IsValid()&&!Id.IsValid()){Hidden=BeforeSolo;BeforeSolo.Reset();}
         Solo=Id;
     }
-    bool Visible(FGuid Id)const{return !Hidden.Contains(Id)&&(!Solo.IsValid()||Solo==Id);}
+    bool Visible(FGuid Id)const{return Solo.IsValid()?Solo==Id:!Hidden.Contains(Id);}
 };

@@ -53,8 +53,8 @@ The workspace VPPTest58 README documents the native vegetation fixture setup and
 collection scripts. A subsequent installation of the consolidated GitHub Landform
 plugin now qualifies the current **Planet** editor on UE 5.8.4 as well. The native
 Ecosystem panel, 2,048-sample globe overlay, climate/PCG parity and profile preview
-undo checks pass in that host. Ecosystem registers after Planet's four built-in
-sections; with Ecosystem disabled, only Planet, Geology, Landforms and Preview
+undo checks pass in that host. Ecosystem appears before the final Preview
+section; with Ecosystem disabled, only Planet, Geology, Landforms and Preview
 appear. Landform has no Ecosystem dependency. The packaged Landform installation
 check uses its own catalogue, guides and materials without private Lab assets.
 
@@ -71,8 +71,9 @@ current classifier/PCG adapter does not implement that material stage.
 - Profile edits require explicit regeneration of the configured Biome Core
   components. Radius, seed and frame are explicit graph context; update them after
   changing the planet context. Generated assets are reviewable copies.
-- Climate sea level is an explicit offset from the neutral surface; synchronization
-  with Landform's OceanHeight guide is manual.
+- Planet climate derives its water datum from the accepted OceanHeight guide.
+  Generated PCG graphs capture this context; rebuild/update them after guide,
+  radius or frame changes before regenerating the configured world component.
 - Generator types are namespaced by profile path and biome ID. Full multi-planet
   Biome Core world behavior and streamed tile/global budgets remain unqualified.
 - Packaged runtime generation, seasonal/climate simulation, planetary wind and
@@ -84,3 +85,15 @@ During validation, UE5.7 UBA compiler startup stalled in `libUbaDetours` rather 
 compiling C++; the successful build used `-NoUBA` and the local parallel executor.
 Builds for different engine versions must be serialized because these local
 installations share a Marketplace rules-assembly cache.
+
+
+## Planet panel correction — 13 November 2026
+
+The current editor uses native property-font labels for Ecosystem and both
+sub-tabs, compact Landforms-style biome rows, a read-only OceanHeight sea-level
+row and Preview at the end. Native tests now exercise the real Planet editor
+for Climate/Biomes, Solo/Unsolo and live guide changes; the separate panel-review
+window was removed. Additional checks cover the OceanHeight-to-neutral datum
+conversion at poles/equator, dry planets without that guide, generated PCG water
+context and unchanged profile payloads. Screenshots and the native report are
+retained under VPPTest58 `Saved/PlanetPanelFix`.

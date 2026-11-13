@@ -19,7 +19,12 @@ protected:
         const auto* S=Context->GetInputSettings<UCEClimatePCGSettings>();FString Error;
         if(!S||!S->Profile||!S->Profile->Ecosystem.Validate(Error)||!UCEClimatePCGSettings::ValidateFrame(S->PlanetToWorld,S->ReferenceRadiusMeters,Error))
         {UE_LOG(LogCEClimate,Error,TEXT("Climate input rejected: %s"),Error.IsEmpty()?TEXT("Missing ecosystem profile"):*Error);return true;}
-        const FCEPlanetEcosystem Model=S->Profile->Ecosystem;
+        FCEPlanetEcosystem Model=S->Profile->Ecosystem;
+        if(S->bOverrideSeaLevel)
+        {
+            if(!FMath::IsFinite(S->SeaLevelMeters)){UE_LOG(LogCEClimate,Error,TEXT("OceanHeight context must be finite."));return true;}
+            Model.Climate.SeaLevelMeters=S->SeaLevelMeters;
+        }
         const auto Inputs=Context->InputData.GetInputsByPin(PCGPinConstants::DefaultInputLabel);
         int64 Count=0;TArray<const UPCGPointData*> PointInputs;
         for(const auto& Input:Inputs)

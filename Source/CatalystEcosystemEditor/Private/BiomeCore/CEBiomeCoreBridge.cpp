@@ -24,11 +24,12 @@ UObject* DuplicateAsset(UObject* Source,const FString& Folder,const FString& Ste
     return Tools.DuplicateAsset(Name,FPackageName::GetLongPackagePath(Package),Source);
 }
 }
-bool UCEBiomeCoreBridge::Build(UCEPlanetEcosystemAsset* Profile,const FString& Folder,const FTransform& Frame,double Radius,int32 Seed,TArray<UObject*>& Assets,FString& Error)
+bool UCEBiomeCoreBridge::Build(UCEPlanetEcosystemAsset* Profile,const FString& Folder,const FTransform& Frame,double Radius,int32 Seed,TArray<UObject*>& Assets,FString& Error,double SeaLevelMeters,bool bOverrideSeaLevel)
 {
     Assets.Reset();
     if(!Profile){Error=TEXT("Select an ecosystem profile.");return false;}
     if(!Profile->Ecosystem.Validate(Error)||!UCEClimatePCGSettings::ValidateFrame(Frame,Radius,Error))return false;
+    if(bOverrideSeaLevel&&!FMath::IsFinite(SeaLevelMeters)){Error=TEXT("OceanHeight context must be finite.");return false;}
     if(!Folder.StartsWith(TEXT("/Game/"))||!FPackageName::IsValidLongPackageName(Folder)){Error=TEXT("Choose a valid /Game destination folder.");return false;}
     auto* SamplerGraph=Cast<UPCGGraph>(Profile->SurfaceSamplerGraph.TryLoad());
     if(!SamplerGraph||SamplerGraph->GetNodes().Num()!=1||SamplerGraph->GetNodes()[0]->GetSettings()->GetClass()->GetPathName()!=TEXT("/Script/VoxelPCG.PCGVoxelSamplerSettings"))
@@ -64,6 +65,7 @@ bool UCEBiomeCoreBridge::Build(UCEPlanetEcosystemAsset* Profile,const FString& F
         UPCGSettings* CopiedSampler=nullptr;auto* VoxelNode=Graph->AddNodeCopy(Sampler,CopiedSampler);
         UCEClimatePCGSettings* Climate=nullptr;auto* ClimateNode=Graph->AddNodeOfType(Climate);
         Climate->Profile=Profile;Climate->PlanetToWorld=Frame;Climate->ReferenceRadiusMeters=Radius;Climate->PlanetSeed=Seed;Climate->TargetBiome=S.Biome->Id;
+        Climate->bOverrideSeaLevel=bOverrideSeaLevel;Climate->SeaLevelMeters=SeaLevelMeters;
         if(!Graph->AddEdge(VoxelNode,TEXT("Out"),ClimateNode,TEXT("In"))||!Graph->AddEdge(ClimateNode,TEXT("Out"),Graph->GetOutputNode(),TEXT("Out")))
         {Error=TEXT("PCG pin contract changed. Generated graph requires review.");return false;}
         void* Gen=Generator->ContainerPtrToValuePtr<void>(Definition);GraphField->SetObjectPropertyValue_InContainer(Gen,Graph);

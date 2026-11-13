@@ -9,5 +9,5 @@ class CATALYSTECOSYSTEMEDITOR_API UCEBiomeCoreBridge : public UBlueprintFunction
     GENERATED_BODY()
 public:
     UFUNCTION(BlueprintCallable,Category="Catalyst|Ecosystem")
-    static bool Build(UCEPlanetEcosystemAsset* Profile,const FString& DestinationFolder,const FTransform& PlanetToWorld,double ReferenceRadiusMeters,int32 PlanetSeed,TArray<UObject*>& BiomeAssets,FString& Error);
+    static bool Build(UCEPlanetEcosystemAsset* Profile,const FString& DestinationFolder,const FTransform& PlanetToWorld,double ReferenceRadiusMeters,int32 PlanetSeed,TArray<UObject*>& BiomeAssets,FString& Error,double SeaLevelMeters=0,bool bOverrideSeaLevel=false);
 };
