@@ -1,10 +1,21 @@
 # Catalyst Ecosystem Plugin
 
-CatalystEcosystemPlugin presents ecosystem simulations in Unreal Engine. The
-workspace checkout is `Ecosystems/catalyst-ecosystem-ue-plugin`. Implementation is
-planned; this initial repository is not a working or qualified UE plugin yet.
+Catalyst Ecosystem adds deterministic planetary climate and biome authoring to
+Unreal Engine. Its optional Landform Planet Builder section has **Climate** and
+**Biomes** sub-tabs. A shared evaluator drives the biome coverage preview and a
+native PCG node; the editor bridge builds climate-filtered Biome Core generators.
 
-## Responsibility
+See [Climate and Biomes](Docs/ClimateAndBiomes.md) for model, integration and limits,
+and [qualification](Docs/Qualification.md) for the exact engine/platform coverage.
+The workspace checkout is `Ecosystems/catalyst-ecosystem-ue-plugin`.
+
+Install alongside CatalystFoundation and PCG. Add CatalystLandform for the Planet
+Builder integration, and enable PCGBiomeCore in the host for the generator bridge.
+Restart the editor after compiling reflected native changes. The project must use
+plugins built against its engine version; Landform's pinned 5.7 host and VPPTest58
+are separate qualification targets.
+
+## Planned simulation presentation responsibility
 
 - Own ecosystem prototype catalogs and every ecosystem presentation choice:
   meshes, textures, materials, skeletons, animation, appearance variants and
@@ -15,7 +26,7 @@ planned; this initial repository is not a working or qualified UE plugin yet.
 - Own asynchronous content selection/loading and fallback policy, with teardown
   safe across world travel, provider removal and pooled-Actor reuse.
 
-The plugin depends on
+The future simulation presentation adapter will depend on
 [CatalystSimulatorPlugin](https://github.com/BenjaVision-Catalyst/catalyst-simulator-ue-plugin)
 for the connection binding, accepted-state cache, stable identity, subscriptions,
 Mass/instance machinery, interpolation, pooling and global budgets. It does not

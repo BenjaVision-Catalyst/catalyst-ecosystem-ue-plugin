@@ -1,0 +1,49 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "0.1.0",
+  "FriendlyName": "Catalyst:Ecosystem",
+  "Description": "Deterministic planetary climate and biome authoring.",
+  "Category": "BenjaVision",
+  "CreatedBy": "BenjaVision",
+  "CanContainContent": true,
+  "IsExperimentalVersion": true,
+  "Installed": false,
+  "Plugins": [
+    {
+      "Name": "CatalystFoundation",
+      "Enabled": true
+    },
+    {
+      "Name": "PCG",
+      "Enabled": true
+    },
+    {
+      "Name": "CatalystLandform",
+      "Enabled": true,
+      "Optional": true
+    }
+  ],
+  "Modules": [
+    {
+      "Name": "CatalystEcosystem",
+      "Type": "Runtime",
+      "LoadingPhase": "Default"
+    },
+    {
+      "Name": "CatalystEcosystemPCG",
+      "Type": "Runtime",
+      "LoadingPhase": "Default"
+    },
+    {
+      "Name": "CatalystEcosystemEditor",
+      "Type": "Editor",
+      "LoadingPhase": "PostEngineInit"
+    },
+    {
+      "Name": "CatalystEcosystemTests",
+      "Type": "Editor",
+      "LoadingPhase": "None"
+    }
+  ]
+}
