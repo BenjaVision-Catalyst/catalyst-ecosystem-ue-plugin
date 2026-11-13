@@ -2,6 +2,13 @@
 #if WITH_CE_LANDFORM
 #include "PlanetBuilder/CLPlanetBuilderExtensions.h"
 #include "Model/CEPlanetEcosystem.h"
+#include "Model/CEPlanetEcosystemFactory.h"
+#include "Engine/Selection.h"
+#include "Widgets/IToolTip.h"
+#include "PropertyCustomizationHelpers.h"
+#include "AssetToolsModule.h"
+#include "IAssetTools.h"
+#include "AssetDefinitionRegistry.h"
 #include "Editor.h"
 #include "Subsystems/AssetEditorSubsystem.h"
 #include "Widgets/SWindow.h"
@@ -97,7 +104,106 @@ struct FToolkitReview : IAutomationLatentCommand
         return false;
     }
 };
+TSharedPtr<SWidget> FindType(TSharedRef<SWidget> W,FName Type)
+{
+    if(W->GetType()==Type)return W;
+    auto* C=W->GetChildren();for(int32 I=0;I<C->Num();++I)if(auto R=FindType(C->GetChildAt(I),Type))return R;return nullptr;
+}
+TSharedPtr<SButton> UseSelected(TSharedRef<SWidget> W)
+{
+    if(W->GetToolTip().IsValid()&&WidgetText(W->GetToolTip()->AsWidget()).Contains(TEXT("Use Selected Asset")))
+        if(auto B=FindType(W,TEXT("SButton")))return StaticCastSharedPtr<SButton>(B);
+    auto* C=W->GetChildren();for(int32 I=0;I<C->Num();++I)if(auto R=UseSelected(C->GetChildAt(I)))return R;return nullptr;
+}
+struct FAssetPickerReview : IAutomationLatentCommand
+{
+    FAutomationTestBase* Test;
+    TStrongObjectPtr<UCLPlanetRecipeAsset> Planet{NewObject<UCLPlanetRecipeAsset>(GetTransientPackage(),NAME_None,RF_Transactional)};
+    TStrongObjectPtr<UCEPlanetEcosystemAsset> Example;
+    TStrongObjectPtr<UCEPlanetEcosystemAsset> Created;
+    TSharedPtr<SWindow> Window;
+    int32 Stage=0;double Start=FPlatformTime::Seconds(),SelectionAt=0;
+    explicit FAssetPickerReview(FAutomationTestBase* T):Test(T)
+    {
+        Example.Reset(Cast<UCEPlanetEcosystemAsset>(UCEPlanetEcosystemAsset::ExampleAssetPath().TryLoad()));
+        Test->TestTrue(TEXT("Packaged example loads"),Example.IsValid());
+        if(Example.IsValid())
+        {
+            FString Error;Test->TestTrue(TEXT("Packaged example is valid"),Example->Ecosystem.Validate(Error));
+            Test->TestEqual(TEXT("Current nine-biome example is shipped"),Example->Ecosystem.Biomes.Num(),9);
+            const auto* Definition=UAssetDefinitionRegistry::Get()->GetAssetDefinitionForAsset(FAssetData(Example.Get()));
+            Test->TestTrue(TEXT("Ecosystem uses the Foundation asset definition"),
+                Definition&&Definition->IsA<UCEPlanetEcosystemAssetDefinition>());
+            Test->TestTrue(TEXT("Ecosystem uses the Foundation model asset"),
+                Example->IsA<UCFModelAsset>());
+        }
+        TStrongObjectPtr<UCEPlanetEcosystemFactory> Factory(NewObject<UCEPlanetEcosystemFactory>());
+        Test->TestTrue(TEXT("Native factory is discoverable by the standard picker"),
+            PropertyCustomizationHelpers::GetNewAssetFactoriesForClasses({UCEPlanetEcosystemAsset::StaticClass()})
+            .ContainsByPredicate([](const UFactory* F){return F->IsA<UCEPlanetEcosystemFactory>();}));
+        Created.Reset(Cast<UCEPlanetEcosystemAsset>(FModuleManager::LoadModuleChecked<FAssetToolsModule>(TEXT("AssetTools")).Get().CreateAsset(
+            TEXT("DA_PickerEcosystem_")+FGuid::NewGuid().ToString(EGuidFormats::Digits),TEXT("/Game/__EcosystemPickerTest"),
+            UCEPlanetEcosystemAsset::StaticClass(),Factory.Get())));
+        Test->TestTrue(TEXT("Factory creates an ecosystem"),Created.IsValid());
+        if(Example.IsValid()&&Created.IsValid())
+        {
+            FString A,B;FCEPlanetEcosystem::StaticStruct()->ExportText(A,&Example->Ecosystem,nullptr,nullptr,PPF_None,nullptr);
+            FCEPlanetEcosystem::StaticStruct()->ExportText(B,&Created->Ecosystem,nullptr,nullptr,PPF_None,nullptr);
+            Test->TestEqual(TEXT("New ecosystem starts from packaged example"),B,A);
+        }
+        Planet->Recipe=FCLPlanetCompiler::BasePlanet();Planet->Recipe.RadiusMeters=100;
+        GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->OpenEditorForAsset(Planet.Get());
+    }
+    bool Close(){GEditor->GetSelectedObjects()->Deselect(Created.Get());GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->CloseAllEditorsForAsset(Planet.Get());return true;}
+    bool Update() override
+    {
+        if(FPlatformTime::Seconds()-Start>40){Test->AddError(FString::Printf(TEXT("Asset picker review timed out at stage %d"),Stage));return Close();}
+        if(Stage==0)
+        {
+            TArray<TSharedRef<SWindow>> Windows;FSlateApplication::Get().GetAllVisibleWindowsOrdered(Windows);
+            for(auto W:Windows)if(auto C=Check(W,TEXT("Ecosystem"))){Window=W;C->ToggleCheckedState();Stage=1;return false;}
+        }
+        if(!Window||!Example.IsValid()||!Created.IsValid())return false;
+        const FString Text=WidgetText(Window.ToSharedRef());
+        if(Stage==1)
+        {
+            if(!Text.Contains(TEXT("DA_ExampleEcosystem")))return false;
+            Test->TestFalse(TEXT("Opening an unlinked planet does not author a link"),Planet->AuthoringExtensions.Contains(TEXT("CatalystEcosystem")));
+            Test->TestTrue(TEXT("Default picker is above the sub-tabs"),Text.Find(TEXT("DA_ExampleEcosystem"))<Text.Find(TEXT("ClimateBiomes")));
+            auto Picker=FindType(Window.ToSharedRef(),TEXT("SObjectPropertyEntryBox"));
+            if(!Test->TestTrue(TEXT("Uses native UE object picker"),Picker.IsValid()))return Close();
+            GEditor->SyncBrowserToObjects(TArray<UObject*>{Created.Get()});SelectionAt=FPlatformTime::Seconds();Stage=10;return false;
+        }
+        if(Stage==10)
+        {
+            if(FPlatformTime::Seconds()-SelectionAt<.5)return false;
+            auto Picker=FindType(Window.ToSharedRef(),TEXT("SObjectPropertyEntryBox"));
+            auto Use=Picker.IsValid()?UseSelected(Picker.ToSharedRef()):nullptr;
+            if(!Test->TestTrue(TEXT("Native picker supports existing asset selection"),Use.IsValid()))return Close();
+            Use->SimulateClick();Stage=2;return false;
+        }
+        const auto* Link=Planet->AuthoringExtensions.Find(TEXT("CatalystEcosystem"));
+        if(Stage==2)
+        {
+            if(!Link||*Link!=FSoftObjectPath(Created.Get()))return false;
+            Test->TestTrue(TEXT("Selected asset is shown by both panels"),Text.Contains(Created->GetName()));
+            GEditor->UndoTransaction();Stage=3;return false;
+        }
+        if(Stage==3)
+        {
+            if(Link)return false;
+            Test->TestTrue(TEXT("Undo restores the packaged default"),Text.Contains(TEXT("DA_ExampleEcosystem")));
+            GEditor->RedoTransaction();Stage=4;return false;
+        }
+        if(Stage==4&&Link&&*Link==FSoftObjectPath(Created.Get()))
+        {Test->TestTrue(TEXT("Redo restores the selected asset"),Text.Contains(Created->GetName()));return Close();}
+        return false;
+    }
+};
+
 }
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCEToolkitTest,"Catalyst.Ecosystem.Editor.NativePlanetBuilder",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
 bool FCEToolkitTest::RunTest(const FString&){ADD_LATENT_AUTOMATION_COMMAND(FToolkitReview(this));return true;}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCEAssetPickerTest,"Catalyst.Ecosystem.Editor.AssetPicker",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FCEAssetPickerTest::RunTest(const FString&){ADD_LATENT_AUTOMATION_COMMAND(FAssetPickerReview(this));return true;}
 #endif

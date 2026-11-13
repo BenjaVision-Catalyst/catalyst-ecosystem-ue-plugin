@@ -68,6 +68,8 @@ class CATALYSTECOSYSTEM_API UCEPlanetEcosystemAsset : public UCFModelAsset
     GENERATED_BODY()
 public:
     UCEPlanetEcosystemAsset();
+    /** Packaged authoring example used when a planet has no explicit ecosystem link. */
+    static FSoftObjectPath ExampleAssetPath();
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ecosystem") FCEPlanetEcosystem Ecosystem;
     /** A configured graph with exactly one bounded native VPP surface sampler. Authoring reference, outside the portable climate payload. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Biome Core", meta=(AllowedClasses="/Script/PCG.PCGGraph")) FSoftObjectPath SurfaceSamplerGraph;

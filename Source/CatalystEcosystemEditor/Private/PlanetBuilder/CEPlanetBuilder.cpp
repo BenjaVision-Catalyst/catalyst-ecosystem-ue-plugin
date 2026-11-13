@@ -69,14 +69,18 @@ public:
         Context=MoveTemp(InContext);
         ChildSlot[SNew(SVerticalBox)
             +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(SHorizontalBox)
+                +SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0,0,8,0)[Label(TEXT("Ecosystem"))]
+                +SHorizontalBox::Slot().FillWidth(1)[SNew(SObjectPropertyEntryBox)
+                    .AllowedClass(UCEPlanetEcosystemAsset::StaticClass()).AllowClear(false).AllowCreate(true)
+                    .ObjectPath_Lambda([this]{return Profile.IsValid()?Profile->GetPathName():ObservedProfileLink.ToString();})
+                    .OnObjectChanged_Lambda([this](const FAssetData& Asset){SelectProfile(Cast<UCEPlanetEcosystemAsset>(Asset.GetAsset()));})]]
+            +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(SHorizontalBox)
                 +SHorizontalBox::Slot().FillWidth(1)[SNew(SCheckBox).Style(FAppStyle::Get(),"DetailsView.SectionButton")
                     .IsChecked_Lambda([this]{return Subtab==0?ECheckBoxState::Checked:ECheckBoxState::Unchecked;})
                     .OnCheckStateChanged_Lambda([this](ECheckBoxState C){if(C==ECheckBoxState::Checked)Subtab=0;})[Label(TEXT("Climate"))]]
                 +SHorizontalBox::Slot().FillWidth(1)[SNew(SCheckBox).Style(FAppStyle::Get(),"DetailsView.SectionButton")
                     .IsChecked_Lambda([this]{return Subtab==1?ECheckBoxState::Checked:ECheckBoxState::Unchecked;})
                     .OnCheckStateChanged_Lambda([this](ECheckBoxState C){if(C==ECheckBoxState::Checked)Subtab=1;})[Label(TEXT("Biomes"))]]]
-            +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(SButton).Text(FText::FromString(TEXT("Create ecosystem for this planet")))
-                .Visibility_Lambda([this]{return Profile.IsValid()?EVisibility::Collapsed:EVisibility::Visible;}).OnClicked_Lambda([this]{CreateProfile();return FReply::Handled();})]
             +SVerticalBox::Slot().FillHeight(1)[SAssignNew(Pages,SWidgetSwitcher).WidgetIndex_Lambda([this]{return Subtab;})
                 +SWidgetSwitcher::Slot()[SAssignNew(ClimateBox,SVerticalBox)]
                 +SWidgetSwitcher::Slot()[SNew(SScrollBox)+SScrollBox::Slot()[SAssignNew(BiomeBox,SVerticalBox)]]]
@@ -116,7 +120,7 @@ private:
     uint64 Revision=0,WorkRevision=0;
     bool bActive=false,bPreviewDirty=true,bRebuild=false;
     int32 Subtab=0;
-    FString Status=TEXT("Create a profile to author climate and preview biome placement.");
+    FString Status;
     FCEBiomePreviewState PreviewState;
     TSet<FGuid> Expanded;
     TUniquePtr<FScopedTransaction> Dragging;
@@ -124,23 +128,22 @@ private:
     void SyncProfile()
     {
         auto* Planet=Context.Planet.Get();const FSoftObjectPath* Link=Planet?Planet->AuthoringExtensions.Find(EcosystemKey):nullptr;
-        const FSoftObjectPath Wanted=Link?*Link:FSoftObjectPath();
+        const FSoftObjectPath Wanted=Link?*Link:UCEPlanetEcosystemAsset::ExampleAssetPath();
         if(bProfileResolved&&Wanted==ObservedProfileLink)return;
         ObservedProfileLink=Wanted;bProfileResolved=true;
         if(Profile.IsValid())Profile->OnEcosystemChanged.RemoveAll(this);
-        Profile.Reset(Link?Cast<UCEPlanetEcosystemAsset>(Link->TryLoad()):nullptr);
+        Profile.Reset(Cast<UCEPlanetEcosystemAsset>(Wanted.TryLoad()));
         if(Profile.IsValid())Profile->OnEcosystemChanged.AddSP(this,&SCEPlanetBuilder::Changed);
         PreviewState=FCEBiomePreviewState();Changed();
-        if(Link&&!Profile.IsValid())Status=TEXT("The linked ecosystem profile could not be loaded. Repair the link or create a replacement profile.");
+        if(!Profile.IsValid())Status=TEXT("The ecosystem could not be loaded. Select an existing ecosystem or create one from the asset picker.");
     }
-    void CreateProfile()
+    void SelectProfile(UCEPlanetEcosystemAsset* Asset)
     {
-        auto* Planet=Context.Planet.Get();if(!Planet||Profile.IsValid())return;
-        FString Package,Name;FModuleManager::LoadModuleChecked<FAssetToolsModule>(TEXT("AssetTools")).Get().CreateUniqueAssetName(Planet->GetOutermost()->GetName()+TEXT("_Ecosystem"),TEXT(""),Package,Name);
-        const FScopedTransaction Tx(NSLOCTEXT("CE","Create","Create planet ecosystem"));Planet->Modify();
-        auto* Asset=NewObject<UCEPlanetEcosystemAsset>(CreatePackage(*Package),*Name,RF_Public|RF_Standalone|RF_Transactional);
-        Asset->Modify();FAssetRegistryModule::AssetCreated(Asset);Asset->MarkPackageDirty();
-        Planet->AuthoringExtensions.Add(EcosystemKey,FSoftObjectPath(Asset));Planet->MarkPackageDirty();SyncProfile();
+        auto* Planet=Context.Planet.Get();if(!Planet||!Asset)return;
+        const FSoftObjectPath Link(Asset);
+        if(const auto* Existing=Planet->AuthoringExtensions.Find(EcosystemKey);Existing&&*Existing==Link)return;
+        const FScopedTransaction Tx(NSLOCTEXT("CE","Select","Select planet ecosystem"));
+        Planet->Modify();Planet->AuthoringExtensions.Add(EcosystemKey,Link);Planet->MarkPackageDirty();SyncProfile();
     }
     void Edit(FGuid Id,FText Label,TFunction<void(FCEBiomeDefinition&)> Action)
     {

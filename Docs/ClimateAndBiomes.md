@@ -9,10 +9,24 @@ Landform remains usable without Ecosystem.
 ## Saved model and editor session
 
 `UCEPlanetEcosystemAsset` is a Foundation model asset with a versioned
-`FCEPlanetEcosystem` payload. Create it explicitly in the Ecosystem section. The
-planet retains a soft authoring link under `CatalystEcosystem`; opening a planet
-alone does not create or dirty a profile. Saving the Planet Builder also saves its
-linked profile. Undo/redo covers saved climate and biome edits.
+`FCEPlanetEcosystem` payload. Its native asset definition derives from Foundation's
+`UCFAssetDefinition_Model`, providing the Catalyst Content Browser category and
+model appearance, just like the Planet asset. A native factory supports creating
+a reusable ecosystem in Content Browser or the picker. A standard Unreal asset selector sits above Climate
+and Biomes. It lists existing ecosystem assets and offers **Create New Asset →
+Ecosystem**. New ecosystems start with the packaged example's climate, nine
+biomes and sampler reference; creating one selects it in the planet. The selector
+also supports Content Browser selection, browsing and drag/drop.
+
+A planet without an explicit link displays
+`/CatalystEcosystem/Examples/DA_ExampleEcosystem`, the example shipped in this
+plugin. Opening a planet alone does not create or dirty an asset. An existing
+link is preserved, including an unresolved link so it can be repaired through the
+picker. Explicit selection records a soft authoring link under
+`CatalystEcosystem`, with undo/redo support. Both sub-tabs edit the selected asset;
+a shared ecosystem is shared data. Create a new ecosystem to author a separate
+variant. Saving the Planet Builder saves its resolved ecosystem as well as the
+planet. Climate and biome edits retain their own undo/redo transactions.
 
 Climate controls the pole axis, equatorial and polar temperatures, lapse rate,
 moisture, subtropical drying and seeded spherical variation. In Planet, sea level

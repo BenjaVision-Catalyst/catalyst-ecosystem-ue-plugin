@@ -70,6 +70,8 @@ FCEClimateSample FCEClimateEvaluator::Evaluate(const FCEPlanetEcosystem& M,FVect
     }
     return S;
 }
+FSoftObjectPath UCEPlanetEcosystemAsset::ExampleAssetPath()
+{return FSoftObjectPath(TEXT("/CatalystEcosystem/Examples/DA_ExampleEcosystem.DA_ExampleEcosystem"));}
 UCEPlanetEcosystemAsset::UCEPlanetEcosystemAsset(){Ecosystem=FCEPlanetEcosystem::MakeDefault();}
 #if WITH_EDITOR
 void UCEPlanetEcosystemAsset::PostEditChangeProperty(FPropertyChangedEvent& E){Super::PostEditChangeProperty(E);OnEcosystemChanged.Broadcast();}

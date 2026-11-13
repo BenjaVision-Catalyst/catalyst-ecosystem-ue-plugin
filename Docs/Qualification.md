@@ -97,3 +97,25 @@ window was removed. Additional checks cover the OceanHeight-to-neutral datum
 conversion at poles/equator, dry planets without that guide, generated PCG water
 context and unchanged profile payloads. Screenshots and the native report are
 retained under VPPTest58 `Saved/PlanetPanelFix`.
+
+
+## Ecosystem asset selection — 13 November 2026
+
+UE 5.8.4 CL58902052 Mac arm64 builds the first-class Ecosystem asset factory
+and Foundation-derived asset definition. The content asset
+`/CatalystEcosystem/Examples/DA_ExampleEcosystem` contains the current climate and
+nine-biome example, with no project-only sampler or vegetation references. It is
+the default displayed by an unlinked Planet. The native selector sits above
+Climate/Biomes; explicit selection is a transaction on the planet's generic soft
+authoring link. Existing links remain intact.
+
+Ten rendered native checks pass: all seven Ecosystem climate/editor/PCG tests,
+Landform fresh installation, Landform row controls/persistence and new-planet
+creation. The new asset-picker check opens the actual Planet editor, resolves the
+packaged default, verifies Foundation model/asset-definition inheritance and native
+factory discovery, creates an unsaved content asset through AssetTools, selects it
+through the picker's Content Browser selection action, and exercises undo/redo.
+The separate optional-plugin staging/preservation test also passes. Reports are
+retained in VPPTest58 `Saved/EcosystemAssetPicker`. The example is saved as requested;
+test and review planets remain unsaved. This native example was authored in 5.8.4;
+earlier 5.7 results do not qualify this new packaged asset on 5.7.
