@@ -50,9 +50,19 @@ rendering; standalone climate/PCG tests can use `-NullRHI`. Start automation on
 `/Engine/Maps/Entry` to avoid unrelated showcase generation.
 
 The workspace VPPTest58 README documents the native vegetation fixture setup and
-collection scripts. That host has no Landform dependency, so the combined Planet
-Builder UI has **not** been qualified on UE 5.8. Upgrading Landform's pinned host
-is a separate change.
+collection scripts. A subsequent installation of the consolidated GitHub Landform
+plugin now qualifies the current **Planet** editor on UE 5.8.4 as well. The native
+Ecosystem panel, 2,048-sample globe overlay, climate/PCG parity and profile preview
+undo checks pass in that host. Ecosystem registers after Planet's four built-in
+sections; with Ecosystem disabled, only Planet, Geology, Landforms and Preview
+appear. Landform has no Ecosystem dependency. The packaged Landform installation
+check uses its own catalogue, guides and materials without private Lab assets.
+
+This combined-editor check does not requalify the earlier saved vegetation
+fixture as a scene authored in the current Planet editor. Its Beech/Birch counts
+remain evidence for the VPP/Biome Core fixture described above. Landform's
+`Docs/LandformDeposits.md` defines the optional future biome-cover handoff; the
+current classifier/PCG adapter does not implement that material stage.
 
 ## Remaining limits
 
