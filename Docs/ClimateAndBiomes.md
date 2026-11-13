@@ -80,8 +80,16 @@ distance to rivers/coasts, seasons, erosion or ecological population dynamics.
 Enable `PCGBiomeCore` in the host to use the native bridge. Ecosystem itself can
 load without that optional content plugin. Configure a bounded graph containing
 exactly one native VPP **Voxel Sampler**, including its intended layer, sample
-density, cell size and seed. Select that graph in Biomes, assign native Biome Core
-BiomeAsset sources to the desired biome rows, then choose **Build Biome Core assets**.
+density, cell size and seed. This is currently a developer API workflow through
+`UCEBiomeCoreBridge::Build`, not a Planet Builder action. The Biomes page contains
+the existing biome rows and their editing/preview controls. Custom biome creation,
+the sampler selector, asset-build button and sample-count footer are deferred or
+removed from this authoring page; progress and errors remain visible when needed.
+The diagnostic point preview continues to evaluate automatically.
+
+For a developer build, set the ecosystem's `SurfaceSamplerGraph` reference,
+assign native Biome Core BiomeAsset sources to the desired biome definitions,
+and invoke the bridge with explicit context.
 
 The bridge preflights the source schemas and creates unique copies in an adjacent
 `EcosystemGenerated` folder. Each enabled, assigned row receives:
@@ -99,12 +107,11 @@ retain their mesh, material, variation and spawning settings, including MegaPlan
 Instanced Skinned Mesh assets.
 
 `UCEBiomeCoreBridge::Build` also exposes this operation to editor Python/Blueprint.
-It takes an explicit planet transform, neutral radius and seed. The Planet Builder
-uses the asset's body frame (identity transform), `RadiusMeters + BaseHeightMeters`
-and recipe seed. Set the climate node's transform to the actual planet's world
-transform when deploying these graphs; positive uniform scale is supported. Rebuild
+It takes an explicit planet transform, neutral radius and seed. Supply the actual
+planet's world transform, `RadiusMeters + BaseHeightMeters`, recipe seed and the
+accepted OceanHeight override. Positive uniform scale is supported. Rebuild
 or update those explicit context values after changing planet radius/seed/frame
-or OceanHeight. Planet builds set the PCG node water-datum override from the same
+or OceanHeight. Developer builds must supply the PCG node water-datum override from the same
 accepted OceanHeight used by the preview. These are generated context snapshots;
 guide edits do not regenerate or rebind arbitrary world graphs automatically.
 A source graph containing additional processing nodes is rejected rather than

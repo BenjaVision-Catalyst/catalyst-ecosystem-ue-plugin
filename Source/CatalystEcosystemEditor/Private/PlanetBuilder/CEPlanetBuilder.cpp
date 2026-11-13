@@ -2,7 +2,6 @@
 #if WITH_CE_LANDFORM
 #include "Model/CEPlanetEcosystem.h"
 #include "PlanetBuilder/CEBiomePreviewState.h"
-#include "BiomeCore/CEBiomeCoreBridge.h"
 #include "Async/Async.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/SBoxPanel.h"
@@ -27,13 +26,10 @@
 #include "UObject/StructOnScope.h"
 #include "UObject/StrongObjectPtr.h"
 #include "UObject/Package.h"
-#include "AssetToolsModule.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "ScopedTransaction.h"
 #include "Editor.h"
-#include "Misc/PackageName.h"
 #include "PropertyCustomizationHelpers.h"
-#include "PCGGraph.h"
 #include "Engine/Selection.h"
 double CEPlanetSeaLevelMeters(const FCLCompiledPlanetRecipe& Plan)
 {
@@ -84,7 +80,7 @@ public:
             +SVerticalBox::Slot().FillHeight(1)[SAssignNew(Pages,SWidgetSwitcher).WidgetIndex_Lambda([this]{return Subtab;})
                 +SWidgetSwitcher::Slot()[SAssignNew(ClimateBox,SVerticalBox)]
                 +SWidgetSwitcher::Slot()[SNew(SScrollBox)+SScrollBox::Slot()[SAssignNew(BiomeBox,SVerticalBox)]]]
-            +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(STextBlock).AutoWrapText(true).Text_Lambda([this]{return FText::FromString(Status);})]];
+            +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(STextBlock).Visibility_Lambda([this]{return Status.IsEmpty()?EVisibility::Collapsed:EVisibility::Visible;}).AutoWrapText(true).Text_Lambda([this]{return FText::FromString(Status);})]];
         SyncProfile();
     }
     virtual ~SCEPlanetBuilder() override
@@ -100,7 +96,7 @@ public:
         if(Plan!=ObservedPlan){ObservedPlan=Plan;++Revision;bPreviewDirty=true;Context.PublishOverlay(nullptr);}
         if(Work.IsValid()&&Work.IsReady())
         {
-            auto Result=Work.Get();Work=TFuture<TSharedPtr<const FCLPlanetBuilderOverlay>>();if(bActive&&WorkRevision==Revision&&Result){Context.PublishOverlay(Result);Status=FString::Printf(TEXT("Biome preview: %d surface samples. Eye and Solo affect preview only."),Result->BodyMeters.Num());}
+            auto Result=Work.Get();Work=TFuture<TSharedPtr<const FCLPlanetBuilderOverlay>>();if(bActive&&WorkRevision==Revision&&Result){Context.PublishOverlay(Result);Status.Reset();}
         }
         if(bActive&&bPreviewDirty&&!Work.IsValid()&&Profile.IsValid()&&Plan)StartPreview(Plan);
     }
@@ -230,18 +226,7 @@ private:
             Details->GetOnFinishedChangingPropertiesDelegate().AddLambda([this,Id,Draft](const FPropertyChangedEvent&){Edit(Id,NSLOCTEXT("CE","Habitat","Edit biome habitat"),[&](auto& X){X=*reinterpret_cast<const FCEBiomeDefinition*>(Draft->GetStructMemory());X.Id=Id;});});
             BiomeViews.Add(Details);DetailsBox->SetContent(Details->GetWidget().ToSharedRef());
         }
-        BiomeBox->AddSlot().AutoHeight().Padding(4)[SNew(SButton).Text(FText::FromString(TEXT("Add biome"))).IsEnabled(Profile->Ecosystem.Biomes.Num()<64)
-            .OnClicked_Lambda([this]{const FScopedTransaction Tx(NSLOCTEXT("CE","Add","Add biome"));Profile->Modify();auto& B=Profile->Ecosystem.Biomes.AddDefaulted_GetRef();B.Id=FGuid::NewGuid();B.Name=TEXT("New biome");Profile->PostEditChange();return FReply::Handled();})];
-        BiomeBox->AddSlot().AutoHeight().Padding(4)[SNew(STextBlock).Text(FText::FromString(TEXT("Configured VPP surface sampler graph")))];
-        BiomeBox->AddSlot().AutoHeight().Padding(4)[SNew(SObjectPropertyEntryBox).AllowedClass(UPCGGraph::StaticClass())
-            .ObjectPath_Lambda([this]{return Profile.IsValid()?Profile->SurfaceSamplerGraph.ToString():FString();})
-            .OnObjectChanged_Lambda([this](const FAssetData& A){const FScopedTransaction Tx(NSLOCTEXT("CE","Sampler","Set ecosystem surface sampler"));Profile->Modify();Profile->SurfaceSamplerGraph=A.GetSoftObjectPath();Profile->PostEditChange();})];
-        BiomeBox->AddSlot().AutoHeight().Padding(4)[SNew(SButton).Text(FText::FromString(TEXT("Build Biome Core assets")))
-            .OnClicked_Lambda([this]{TArray<UObject*> Assets;FString Error;auto* P=Context.Planet.Get();auto Plan=Context.GetPlan();
-                if(!P||!Plan){Status=TEXT("Wait for an accepted terrain preview.");return FReply::Handled();}
-                const FString Folder=FPackageName::GetLongPackagePath(P->GetOutermost()->GetName())+TEXT("/EcosystemGenerated");
-                if(UCEBiomeCoreBridge::Build(Profile.Get(),Folder,FTransform::Identity,Plan->RadiusMeters+Plan->BaseHeightMeters,P->Recipe.Seed,Assets,Error,CEPlanetSeaLevelMeters(*Plan),true))Status=FString::Printf(TEXT("Created %d Biome Core assets. Assign these to the intended Biome Volume. Set the climate node planet transform to match that volume's planet."),Assets.Num());else Status=Error;
-                return FReply::Handled();})];
+
     }
     void StartPreview(TSharedPtr<const FCLCompiledPlanetRecipe> Plan)
     {

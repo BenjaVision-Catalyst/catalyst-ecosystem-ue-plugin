@@ -42,13 +42,29 @@ struct FToolkitReview : IAutomationLatentCommand
     FAutomationTestBase* Test;
     TStrongObjectPtr<UCLPlanetRecipeAsset> Planet{NewObject<UCLPlanetRecipeAsset>()};
     TStrongObjectPtr<UCEPlanetEcosystemAsset> Profile{NewObject<UCEPlanetEcosystemAsset>()};
+    struct FPreviewMetrics{int32 Samples=-1;};
+    TSharedRef<FPreviewMetrics> Metrics=MakeShared<FPreviewMetrics>();
+    TOptional<FCLPlanetBuilderProvider> OriginalProvider;
     TSharedPtr<SWindow> Window;int32 Stage=0;double Start=FPlatformTime::Seconds(),ReadyAt=0;
     explicit FToolkitReview(FAutomationTestBase* T):Test(T)
     {
         Planet->Recipe=FCLPlanetCompiler::BasePlanet();Planet->Recipe.Name=TEXT("Ecosystem globe qualification");Planet->Recipe.RadiusMeters=100;
         Planet->AuthoringExtensions.Add(TEXT("CatalystEcosystem"),FSoftObjectPath(Profile.Get()));
+        // Observe the real overlay contract, not implementation/debug text in the UI.
+        for(const auto& Provider:FCLPlanetBuilderExtensions::Providers())if(Provider.Id==TEXT("CatalystEcosystem"))
+        {
+            OriginalProvider=Provider;auto Observed=Provider;const auto Create=Provider.Create;const auto View=Metrics;
+            Observed.Create=[Create,View](FCLPlanetBuilderContext Context)
+            {
+                const auto Publish=Context.PublishOverlay;
+                Context.PublishOverlay=[Publish,View](auto Overlay){View->Samples=Overlay?Overlay->BodyMeters.Num():-1;Publish(Overlay);};
+                return Create(MoveTemp(Context));
+            };
+            FCLPlanetBuilderExtensions::Register(MoveTemp(Observed));break;
+        }
         Test->TestTrue(TEXT("Planet opens through native asset editor"),GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->OpenEditorForAsset(Planet.Get()));
     }
+    ~FToolkitReview(){if(OriginalProvider.IsSet())FCLPlanetBuilderExtensions::Register(OriginalProvider.GetValue());}
     bool Close(){GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->CloseAllEditorsForAsset(Planet.Get());return true;}
     void Capture(const TCHAR* Name)
     {
@@ -69,7 +85,7 @@ struct FToolkitReview : IAutomationLatentCommand
         const auto Text=WidgetText(Window.ToSharedRef());
         if(Stage==1)
         {
-            if(!Text.Contains(TEXT("Biome preview: 2048"))||!Text.Contains(TEXT("OceanHeight · 40.00 m")))return false;
+            if(Metrics->Samples!=2048||!Text.Contains(TEXT("OceanHeight · 40.00 m")))return false;
             if(!ReadyAt){ReadyAt=FPlatformTime::Seconds();return false;}if(FPlatformTime::Seconds()-ReadyAt<3)return false;
             Test->TestTrue(TEXT("Preview is last after optional authoring sections"),Text.Contains(TEXT("PlanetGeologyProvincesEcosystemPreview")));
             Test->TestTrue(TEXT("Both sub-tabs use the actual Planet extension"),Text.Contains(TEXT("ClimateBiomes")));
@@ -78,25 +94,26 @@ struct FToolkitReview : IAutomationLatentCommand
         }
         if(Stage==2)
         {
+            Test->TestFalse(TEXT("Biome authoring hides deferred creation and technical wiring controls"),Text.Contains(TEXT("Add biome"))||Text.Contains(TEXT("Configured VPP surface sampler graph"))||Text.Contains(TEXT("Build Biome Core assets"))||Text.Contains(TEXT("surface samples")));
             Capture(TEXT("biomes"));int32 Index=1;auto Solo=Button(Window.ToSharedRef(),TEXT("Solo"),Index);
             if(!Test->TestTrue(TEXT("Compact polar biome row has a Solo button"),Solo.IsValid()))return Close();
             Solo->SimulateClick();Stage=3;return false;
         }
         if(Stage==3)
         {
-            if(Text.Contains(TEXT("Biome preview: 2048"))||!Text.Contains(TEXT("Biome preview:")))return false;
+            if(Metrics->Samples<0||Metrics->Samples>=2048)return false;
             int32 Index=0;auto Solo=Button(Window.ToSharedRef(),TEXT("Unsolo"),Index);if(!Solo)return false;
             Solo->SimulateClick();Stage=4;return false;
         }
         if(Stage==4)
         {
-            if(!Text.Contains(TEXT("Biome preview: 2048")))return false;
+            if(Metrics->Samples!=2048)return false;
             if(!Toggle(TEXT("Climate")))return Close();
             auto* Ocean=Planet->Recipe.RadialGuides.Guides.FindByPredicate([](const auto& G){return G.Name==TEXT("OceanHeight");});
             if(!Test->TestNotNull(TEXT("Planet has its OceanHeight guide"),Ocean))return Close();
             Ocean->NormalizedHeight=.9;Planet->OnRecipeChanged.Broadcast();Stage=5;return false;
         }
-        if(Stage==5&&Text.Contains(TEXT("OceanHeight · 90.00 m"))&&Text.Contains(TEXT("Biome preview: 2048")))
+        if(Stage==5&&Text.Contains(TEXT("OceanHeight · 90.00 m"))&&Metrics->Samples==2048)
         {
             Test->TestEqual(TEXT("Guide changes never rewrite stored climate settings"),Profile->Ecosystem.Climate.SeaLevelMeters,0.);
             Capture(TEXT("ocean-height-guide"));return Close();

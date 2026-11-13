@@ -119,3 +119,17 @@ The separate optional-plugin staging/preservation test also passes. Reports are
 retained in VPPTest58 `Saved/EcosystemAssetPicker`. The example is saved as requested;
 test and review planets remain unsaved. This native example was authored in 5.8.4;
 earlier 5.7 results do not qualify this new packaged asset on 5.7.
+
+## Biomes panel cleanup — 13 November 2026
+
+The Biomes page shows the current biome catalogue and row controls. Deferred
+custom-biome creation and manual VPP/Biome Core integration controls have been
+removed from the panel, along with the normal sample-count footer. The existing
+bridge API and stored authoring references are retained. Progress and error
+messages are visible only when relevant. The native editor regression observes
+actual overlay publication for preview readiness and Solo/Unsolo coverage rather
+than relying on debug text in the user interface.
+
+All seven Ecosystem climate, PCG and editor tests pass on UE 5.8.4 Mac arm64,
+including the actual Planet panel, asset picker, Solo/Unsolo, OceanHeight changes
+and preview visibility/undo. Evidence is in VPPTest58 Saved/EcosystemPanelCleanup.
