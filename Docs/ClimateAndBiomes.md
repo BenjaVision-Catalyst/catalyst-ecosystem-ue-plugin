@@ -44,7 +44,7 @@ equal priority. Higher priority wins first. Row order has no effect.
 Eye and whole-planet Solo are session-only. They hide already classified preview
 samples; they do not alter classification or PCG generation. Unsolo restores the
 eye state from before Solo. Disabled biomes do not generate and their other row
-controls are disabled. Biomes use the Landforms row style: disclosure, generation
+controls are disabled. Biomes use the Provinces > Types row style: disclosure, generation
 checkbox, bold name and small description, Character/readout, eye and reseed icons,
 and Solo/Unsolo. Expanded habitat/source settings remain owned by Ecosystem.
 Up to 64 biomes are admitted; uncovered locations remain
