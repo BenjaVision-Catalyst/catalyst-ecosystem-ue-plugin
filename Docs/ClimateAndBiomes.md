@@ -233,3 +233,7 @@ The guarantee is biome assignment. A row needs a Biome Core asset to render its
 own foliage. Unconfigured biomes retain their map regions and cannot invent art
 assets. This does not add a terrain material provider or automatic forest-floor
 texture baking; consumers of baked masks must use the new assignment query.
+
+Region ownership is explicit: a linked ecosystem or a previous climate-node
+publication admits the consumer. Merely having the packaged default available for
+preview does not attach Ecosystem state to unlinked generic surface graphs.

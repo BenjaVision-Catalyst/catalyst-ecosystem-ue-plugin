@@ -55,6 +55,10 @@ bool Tick(float)
         for(TActorIterator<AActor> It(W);It;++It)
         {
             auto* R=It->FindComponentByClass<UCLPlanetSurfaceRegion>();if(!R||!IsValid(R->Planet)||R->Planet->GetSurfaceGenerationKey().IsEmpty())continue;
+            // A default preview profile alone does not make Ecosystems the owner of
+            // unrelated generic surface graphs. An explicit link or a prior
+            // climate-node publication establishes that consumer binding.
+            if(!It->FindComponentByClass<UCEBiomePlacementState>()&&(!R->Planet->RecipeAsset||!R->Planet->RecipeAsset->AuthoringExtensions.Contains(TEXT("CatalystEcosystem"))))continue;
             auto* Pair=Profiles.Find(R->Planet);
             if(!Pair){auto* P=CEPlanetEcosystemProfile(R->Planet);if(!P)continue;Pair=&Profiles.Add(R->Planet,{P,PlacementKey(*R->Planet,*P)});
 #if WITH_EDITOR
@@ -180,7 +184,12 @@ void CERecordBiomePlacement(UObject* Object,UObject* PlanetObject,UCEPlanetEcosy
 {
 #if WITH_CE_PLACEMENT_LANDFORM
     auto* Owner=Cast<AActor>(Object);auto* Planet=Cast<ACLPlanet>(PlanetObject);
-    if(Owner&&Planet&&Profile)State(*Owner)->PendingKey=PlacementKey(*Planet,*Profile);
+    if(Owner&&Planet&&Profile)
+    {
+        auto* S=State(*Owner);const FString Key=PlacementKey(*Planet,*Profile);
+        if(S->RequestedKey.IsEmpty())S->RequestedKey=Key;
+        S->PendingKey=Key;
+    }
 #endif
 }
 void CEStartBiomePlacement()
