@@ -1,6 +1,7 @@
 #include "PlanetBuilder/CEPlanetBuilder.h"
 #if WITH_CE_LANDFORM
 #include "Model/CEPlanetEcosystem.h"
+#include "Climate/CEPlanetBiomePlacement.h"
 #include "PlanetBuilder/CEBiomePreviewState.h"
 #include "Async/Async.h"
 #include "Widgets/SCompoundWidget.h"
@@ -98,7 +99,7 @@ public:
         {
             auto Result=Work.Get();Work=TFuture<TSharedPtr<const FCLPlanetBuilderOverlay>>();if(bActive&&WorkRevision==Revision&&Result){Context.PublishOverlay(Result);Status.Reset();}
         }
-        if(bActive&&bPreviewDirty&&!Work.IsValid()&&Profile.IsValid()&&Plan)StartPreview(Plan);
+        if(bActive&&bPreviewDirty&&!Dragging&&!Work.IsValid()&&Profile.IsValid()&&Plan)StartPreview(Plan);
     }
 private:
     FCLPlanetBuilderContext Context;
@@ -231,27 +232,20 @@ private:
     void StartPreview(TSharedPtr<const FCLCompiledPlanetRecipe> Plan)
     {
         bPreviewDirty=false;FString Error;if(!Profile->Ecosystem.Validate(Error)){Status=Error;Context.PublishOverlay(nullptr);return;}
-        auto Model=Profile->Ecosystem;Model.Climate.SeaLevelMeters=CEPlanetSeaLevelMeters(*Plan);const auto Visibility=PreviewState;const int32 Seed=Context.Planet.IsValid()?Context.Planet->Recipe.Seed:0;
+        bool Pending;const auto Placement=CEGetCompiledBiomePlacement(Plan,Profile.Get(),Pending,Error);
+        if(!Placement){Status=Pending?TEXT("Preparing planetary biome regions…"):Error;bPreviewDirty=Pending;Context.PublishOverlay(nullptr);return;}
+        const auto Visibility=PreviewState;
         WorkRevision=Revision;Status=TEXT("Evaluating climate on the accepted planet surface…");
         Stop=MakeShared<TAtomic<bool>,ESPMode::ThreadSafe>(false);const auto Cancel=Stop;
-        Work=Async(EAsyncExecution::ThreadPool,[Model,Plan,Visibility,Seed,Cancel]()->TSharedPtr<const FCLPlanetBuilderOverlay>
+        Work=Async(EAsyncExecution::ThreadPool,[Placement,Visibility,Cancel]()->TSharedPtr<const FCLPlanetBuilderOverlay>
         {
-            auto Overlay=MakeShared<FCLPlanetBuilderOverlay>();constexpr int32 N=2048;TArray<FVector> Directions;Directions.Reserve(N*3);
-            for(int32 I=0;I<N;++I)
+            auto Overlay=MakeShared<FCLPlanetBuilderOverlay>();
+            for(const auto& C:Placement->Cells)
             {
-                const double Z=1-2*(I+.5)/N,A=I*2.399963229728653;const FVector D(FMath::Sqrt(1-Z*Z)*FMath::Cos(A),FMath::Sqrt(1-Z*Z)*FMath::Sin(A),Z);
-                const FVector T=FVector::CrossProduct(D,FMath::Abs(Z)<.9?FVector::ZAxisVector:FVector::XAxisVector).GetSafeNormal();const FVector B=FVector::CrossProduct(D,T);
-                Directions.Add(D);Directions.Add((D+T*.001).GetSafeNormal());Directions.Add((D+B*.001).GetSafeNormal());
-            }
-            TArray<double> Heights;Heights.Reserve(Directions.Num());
-            for(int32 Start=0;Start<Directions.Num();Start+=256){if(Cancel->Load())return nullptr;TArray<double> Batch;Plan->SampleHeightsMeters(MakeArrayView(Directions).Slice(Start,FMath::Min(256,Directions.Num()-Start)),Batch);Heights.Append(Batch);}
-            for(int32 I=0;I<N;++I)
-            {
-                const int32 J=I*3;const FVector P=Directions[J]*(Plan->RadiusMeters+Heights[J]);const FVector X=Directions[J+1]*(Plan->RadiusMeters+Heights[J+1]),Y=Directions[J+2]*(Plan->RadiusMeters+Heights[J+2]);
-                const auto S=FCEClimateEvaluator::Evaluate(Model,P,FVector::CrossProduct(X-P,Y-P).GetSafeNormal(),Plan->RadiusMeters+Plan->BaseHeightMeters,Seed);
-                if(!Visibility.Visible(S.BiomeId))continue;
-                const auto* Biome=Model.Biomes.FindByPredicate([&](const auto& B){return B.Id==S.BiomeId;});if(!Biome)continue;
-                Overlay->BodyMeters.Add(P);Overlay->Colors.Add(Biome->Color);
+                if(Cancel->Load())return nullptr;
+                if(!C.bSupported||!Visibility.Visible(C.BiomeId))continue;
+                const auto* B=Placement->Model.Biomes.FindByPredicate([&](const auto& V){return V.Id==C.BiomeId;});if(!B)continue;
+                Overlay->BodyMeters.Add(C.PositionMeters);Overlay->Colors.Add(B->Color);
             }
             return Overlay;
         });

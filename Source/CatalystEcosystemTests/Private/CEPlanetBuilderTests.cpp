@@ -42,10 +42,10 @@ struct FToolkitReview : IAutomationLatentCommand
     FAutomationTestBase* Test;
     TStrongObjectPtr<UCLPlanetRecipeAsset> Planet{NewObject<UCLPlanetRecipeAsset>()};
     TStrongObjectPtr<UCEPlanetEcosystemAsset> Profile{NewObject<UCEPlanetEcosystemAsset>()};
-    struct FPreviewMetrics{int32 Samples=-1;};
+    struct FPreviewMetrics{int32 Samples=-1;TArray<FLinearColor> Colors;};
     TSharedRef<FPreviewMetrics> Metrics=MakeShared<FPreviewMetrics>();
     TOptional<FCLPlanetBuilderProvider> OriginalProvider;
-    TSharedPtr<SWindow> Window;int32 Stage=0;double Start=FPlatformTime::Seconds(),ReadyAt=0;
+    TSharedPtr<SWindow> Window;int32 Stage=0,FullSamples=0;double Start=FPlatformTime::Seconds(),ReadyAt=0;
     explicit FToolkitReview(FAutomationTestBase* T):Test(T)
     {
         Planet->Recipe=FCLPlanetCompiler::BasePlanet();Planet->Recipe.Name=TEXT("Ecosystem globe qualification");Planet->Recipe.RadiusMeters=100;
@@ -57,7 +57,7 @@ struct FToolkitReview : IAutomationLatentCommand
             Observed.Create=[Create,View](FCLPlanetBuilderContext Context)
             {
                 const auto Publish=Context.PublishOverlay;
-                Context.PublishOverlay=[Publish,View](auto Overlay){View->Samples=Overlay?Overlay->BodyMeters.Num():-1;Publish(Overlay);};
+                Context.PublishOverlay=[Publish,View](auto Overlay){View->Samples=Overlay?Overlay->BodyMeters.Num():-1;View->Colors=Overlay?Overlay->Colors:TArray<FLinearColor>();Publish(Overlay);};
                 return Create(MoveTemp(Context));
             };
             FCLPlanetBuilderExtensions::Register(MoveTemp(Observed));break;
@@ -85,7 +85,10 @@ struct FToolkitReview : IAutomationLatentCommand
         const auto Text=WidgetText(Window.ToSharedRef());
         if(Stage==1)
         {
-            if(Metrics->Samples!=2048||!Text.Contains(TEXT("OceanHeight · 40.00 m")))return false;
+            if(Metrics->Samples<128||Metrics->Samples>8192||!Text.Contains(TEXT("OceanHeight · 40.00 m")))return false;
+            FullSamples=Metrics->Samples;
+            for(const auto& B:Profile->Ecosystem.Biomes)if(B.bEnabled)
+                Test->TestTrue(TEXT("Every enabled biome has a meaningful visible map region"),Metrics->Colors.FilterByPredicate([&](const FLinearColor& C){return C.Equals(B.Color);}).Num()>=16);
             if(!ReadyAt){ReadyAt=FPlatformTime::Seconds();return false;}if(FPlatformTime::Seconds()-ReadyAt<3)return false;
             Test->TestTrue(TEXT("Preview is last after optional authoring sections"),Text.Contains(TEXT("PlanetGeologyProvincesEcosystemPreview")));
             Test->TestTrue(TEXT("Both sub-tabs use the actual Planet extension"),Text.Contains(TEXT("ClimateBiomes")));
@@ -101,19 +104,20 @@ struct FToolkitReview : IAutomationLatentCommand
         }
         if(Stage==3)
         {
-            if(Metrics->Samples<0||Metrics->Samples>=2048)return false;
+            if(Metrics->Samples<=0||Metrics->Samples>=FullSamples)return false;
+            for(const auto& C:Metrics->Colors)Test->TestTrue(TEXT("Solo filters the assignment without moving biomes"),C.Equals(Profile->Ecosystem.Biomes[1].Color));
             int32 Index=0;auto Solo=Button(Window.ToSharedRef(),TEXT("Unsolo"),Index);if(!Solo)return false;
             Solo->SimulateClick();Stage=4;return false;
         }
         if(Stage==4)
         {
-            if(Metrics->Samples!=2048)return false;
+            if(Metrics->Samples!=FullSamples)return false;
             if(!Toggle(TEXT("Climate")))return Close();
             auto* Ocean=Planet->Recipe.RadialGuides.Guides.FindByPredicate([](const auto& G){return G.Name==TEXT("OceanHeight");});
             if(!Test->TestNotNull(TEXT("Planet has its OceanHeight guide"),Ocean))return Close();
             Ocean->NormalizedHeight=.9;Planet->OnRecipeChanged.Broadcast();Stage=5;return false;
         }
-        if(Stage==5&&Text.Contains(TEXT("OceanHeight · 90.00 m"))&&Metrics->Samples==2048)
+        if(Stage==5&&Text.Contains(TEXT("OceanHeight · 90.00 m"))&&Metrics->Samples==FullSamples)
         {
             Test->TestEqual(TEXT("Guide changes never rewrite stored climate settings"),Profile->Ecosystem.Climate.SeaLevelMeters,0.);
             Capture(TEXT("ocean-height-guide"));return Close();

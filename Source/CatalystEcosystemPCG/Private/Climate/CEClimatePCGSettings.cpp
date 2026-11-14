@@ -1,5 +1,11 @@
 #include "Climate/CEClimatePCGSettings.h"
 #include "PCGContext.h"
+#include "Climate/CEPlanetBiomePlacement.h"
+#if WITH_CE_PLACEMENT_LANDFORM
+#include "PCG/CLPlanetSurfacePCG.h"
+#include "CLPlanet.h"
+#include "PCGComponent.h"
+#endif
 #include "Data/PCGPointData.h"
 #include "Data/PCGSpatialData.h"
 #include "Metadata/PCGMetadata.h"
@@ -17,9 +23,21 @@ protected:
     virtual bool ExecuteInternal(FPCGContext* Context) const override
     {
         const auto* S=Context->GetInputSettings<UCEClimatePCGSettings>();FString Error;
-        if(!S||!S->Profile||!S->Profile->Ecosystem.Validate(Error))
+        auto* Profile=S?S->Profile.Get():nullptr;UObject* Planet=nullptr;AActor* Owner=nullptr;
+#if WITH_CE_PLACEMENT_LANDFORM
+        const auto* Component=Cast<UPCGComponent>(Context->ExecutionSource.GetObject());Owner=Component?Component->GetOwner():nullptr;
+        const auto* Region=Owner?Owner->FindComponentByClass<UCLPlanetSurfaceRegion>():nullptr;
+        if(Region&&IsValid(Region->Planet)){Planet=Region->Planet;Profile=CEPlanetEcosystemProfile(Planet);}
+#endif
+        if(!S||!Profile||!Profile->Ecosystem.Validate(Error))
         {UE_LOG(LogCEClimate,Error,TEXT("Climate input rejected: %s"),Error.IsEmpty()?TEXT("Missing ecosystem profile"):*Error);return true;}
-        FCEPlanetEcosystem Model=S->Profile->Ecosystem;
+        FCEPlanetEcosystem Model=Profile->Ecosystem;
+        TSharedPtr<const FCEBiomePlacementPlan> Placement;
+        if(Planet)
+        {
+            bool Pending;Placement=CEGetPlanetBiomePlacement(Planet,Profile,Pending,Error);
+            if(!Placement){if(Pending)return false;UE_LOG(LogCEClimate,Error,TEXT("Biome placement rejected: %s"),*Error);return true;}
+        }
         FTransform Frame=S->PlanetToWorld;double Reference=S->ReferenceRadiusMeters;int32 Seed=S->PlanetSeed;
         // Generic accepted-surface metadata supersedes an old graph-authoring
         // snapshot, without a dependency on the terrain producer's plugin.
@@ -66,6 +84,7 @@ protected:
         {
             auto* Out=NewObject<UPCGPointData>();Out->InitializeFromData(PointInputs[I]);
             auto* M=Out->Metadata.Get();
+            if(Placement)M->CreateAttribute<FString>(TEXT("CE_PlacementKey"),Placement->AssignmentKey,false,true);
             auto* Temp=M->CreateAttribute<double>(TEXT("CE_TemperatureC"),0,true,true);
             auto* Wet=M->CreateAttribute<double>(TEXT("CE_Moisture"),0,true,true);
             auto* Alt=M->CreateAttribute<double>(TEXT("CE_AltitudeMeters"),0,true,true);
@@ -80,7 +99,7 @@ protected:
             {
                 const FVector Body=Frame.InverseTransformPosition(Point.Transform.GetLocation())*.01;
                 const FVector Normal=Frame.InverseTransformVectorNoScale(Point.Transform.GetRotation().GetAxisZ());
-                const auto Sample=FCEClimateEvaluator::Evaluate(Model,Body,Normal,Reference,Seed);
+                const auto Sample=Placement?Placement->Evaluate(Body,Normal):FCEClimateEvaluator::Evaluate(Model,Body,Normal,Reference,Seed);
                 if(S->TargetBiome.IsValid()&&Sample.BiomeId!=S->TargetBiome)continue;
                 auto& P=Dest.Add_GetRef(Point);P.MetadataEntry=M->AddEntry(Point.MetadataEntry);
                 Temp->SetValue(P.MetadataEntry,Sample.TemperatureC);Wet->SetValue(P.MetadataEntry,Sample.Moisture);Alt->SetValue(P.MetadataEntry,Sample.AltitudeMeters);
@@ -89,6 +108,7 @@ protected:
             }
             auto& Tagged=Context->OutputData.TaggedData.Add_GetRef(Inputs[I]);Tagged.Data=Out;Tagged.Pin=PCGPinConstants::DefaultOutputLabel;
         }
+        if(Planet)CERecordBiomePlacement(Owner,Planet,Profile);
         return true;
     }
 };

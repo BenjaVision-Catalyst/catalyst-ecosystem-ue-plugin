@@ -5,6 +5,10 @@ public class CatalystEcosystemPCG : ModuleRules
     {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
         PublicDependencyModuleNames.AddRange(new[] { "Core", "CoreUObject", "Engine", "PCG", "CatalystEcosystem" });
-        PrivateDependencyModuleNames.AddRange(new string[] {  });
+        bool HasLandform=false;
+        try { HasLandform=System.IO.Directory.Exists(GetModuleDirectory("CatalystLandform")); } catch (BuildException) { }
+        PublicDefinitions.Add("WITH_CE_PLACEMENT_LANDFORM="+(HasLandform?"1":"0"));
+        if(HasLandform) PrivateDependencyModuleNames.Add("CatalystLandform");
+        PrivateDependencyModuleNames.Add("Json");
     }
 }

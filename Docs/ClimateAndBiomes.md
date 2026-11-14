@@ -134,9 +134,10 @@ bounds, density, tags and inherited metadata:
 
 The PCG element executes on the game thread, rejects invalid profiles/frames and
 batches over 65,536 points, and disables element caching so forced regeneration
-observes profile edits. Climate edits do **not** automatically regenerate arbitrary
-worlds: regenerate the explicitly configured Biome Core component after editing.
-Streaming/tile budgets and automatic actor-bound invalidation remain a later step.
+observes profile edits. Configured Landform surface regions regenerate after ecosystem edits through
+Landform's existing fenced queue. Ecosystems records its own derived assignment
+key on each region owner. Arbitrary standalone PCG worlds still require explicit
+regeneration because they have no accepted planetary surface binding.
 
 ## Catalyst template and ownership
 
@@ -159,19 +160,20 @@ planet authoring does not invent a Simulator connection or duplicate its lifecyc
 
 ## Planetary coverage queries
 
-`UCEClimateQueryLibrary::EvaluateSurface` exposes the same native evaluator used
-by the globe and PCG. Supply body-space metre positions, surface normals, the
+`UCEClimateQueryLibrary::EvaluateSurface` exposes local climate/habitat suitability,
+without a whole-planet terrain context. Planet-bound maps and placement use
+`UCEPlanetBiomePlacementLibrary::EvaluatePlanetSurface` instead. Supply body-space metre positions, surface normals, the
 accepted reference radius, Planet seed and OceanHeight datum. It returns winning
 biome IDs without modifying the profile; batches are bounded to 65,536 points.
-This supports appearance-mask baking and independent placement checks. Physical
+Use the planet-bound assignment query for appearance-mask baking and placement
+checks; the local suitability query cannot guarantee representation. Physical
 ground-cover/deposit generation is still a separate contract.
 
 The PCG filter accepts multiple data sets, each bounded to 65,536 points, with an
 aggregate two-million-point execution limit. This permits tiled planetary surface
 samplers without removing the memory guard. It validates the complete input
 before publishing results. Five native climate/PCG tests pass, including native
-query/preview parity and an 80,000-point two-batch execution. Planet-wide world
-deployment and automatic regeneration are not added by this query API.
+query/preview parity and an 80,000-point two-batch execution. The explicit planetary adapter below supplies shared assignment and invalidation.
 
 
 ## Accepted surface context in PCG
@@ -183,5 +185,51 @@ this complete, consistent accepted context instead of its graph-authoring
 snapshot. This keeps reference radius, frame, seed and OceanHeight current after
 a terrain provider regenerates its regions. Invalid, partial or mixed contexts
 are rejected. Standalone inputs without this metadata retain explicit graph
-settings. The consumer adds no dependency on Landform and rewrites neither the
-profile nor the graph. Landform owns the editor's terrain-change refresh queue.
+settings. Standalone metadata consumption rewrites neither profile nor graph. The optional
+planetary adapter compiles when Landform is present; it resolves the region's
+explicit Planet and the linked ecosystem, including after selecting another
+profile. Landform owns the single editor terrain/scenery refresh queue.
+
+
+## Enabled biome representation
+
+An enabled biome receives at least **1% of supported spherical surface footprint**,
+measured by exact cube-sphere solid angles. This is a minimum, not a cap. Existing
+natural winners retain the remainder. Temperature, moisture, altitude, slope and
+water are preferences; the planner grows a connected reserve from the best
+available habitat, reserving the most constrained habitats first. It widens
+placement through increasing habitat penalty when necessary. Water preference
+is relaxed last. Climate, sea level, terrain and habitat authoring values remain
+unchanged. Disabled rows receive no cells. Stable biome GUIDs and seeds settle
+ties independently of row order or preview eye/Solo state.
+
+The bounded assignment has 6 × 32 × 32 cells. Supported cell centres and normals
+come from Landform's actual immutable cave-aware ground sampler. Connected growth
+crosses cube-face seams. If unreserved support is fragmented into islands, a reserve may
+need multiple connected components; the report records this explicitly. No
+supported surface, invalid inputs or insufficient sampled ground produce an
+error rather than a false placement guarantee. The footprint is angular area,
+not a surveyed measure of additional cave-wall or cliff area.
+
+One immutable `FCEBiomePlacementPlan` supplies the Biomes overlay, planet-bound
+PCG filter, appearance query and placement checks. It carries an assignment digest;
+PCG outputs `CE_PlacementKey` alongside the existing factual climate fields.
+`GetPlacementReport` reports reserved/final fractions, connected-component counts
+and habitat relaxation. The editor and runtime adapters key plans by the accepted
+compiled source recipe and ecosystem payload, not asset names alone. Pure ground
+queries/assignment run off-thread; UObject access/publication stays on the main
+thread. The cache holds at most 32 snapshots and joins outstanding work on shutdown.
+
+Ecosystems invalidates each explicitly configured Landform region when its
+placement-policy version, linked profile or model contents change. It uses
+`CLInvalidatePlanetSurfaceRegion`, a generic consumer invalidation hook in Landform,
+rather than introducing a second generation queue. Landform's existing surface
+key fences tectonic/geology/guide/transform changes. Generated placement keys are
+accepted only after native PCG completion for the current surface; walking freezes
+a completed duplicate. Reopening products made by an older placement policy
+regenerates them. Preview eye/Solo controls only visualization.
+
+The guarantee is biome assignment. A row needs a Biome Core asset to render its
+own foliage. Unconfigured biomes retain their map regions and cannot invent art
+assets. This does not add a terrain material provider or automatic forest-floor
+texture baking; consumers of baked masks must use the new assignment query.
