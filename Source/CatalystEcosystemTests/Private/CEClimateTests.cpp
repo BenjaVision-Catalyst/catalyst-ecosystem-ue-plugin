@@ -104,6 +104,21 @@ bool FCEPCGTest::RunTest(const FString&)
     Settings->bOverrideSeaLevel=false;Context=Run();Out=Cast<UPCGPointData>(Context->OutputData.TaggedData[0].Data);
     Water=Out->Metadata->GetConstTypedAttribute<bool>(TEXT("CE_Water"));
     for(const auto& P:Out->GetPoints())TestFalse(TEXT("Standalone PCG retains its explicit profile datum"),Water->GetValueFromItemKey(P.MetadataEntry));
+    Data->Metadata->CreateAttribute<FTransform>(TEXT("Planet_ToWorld"),Frame,false,true);
+    Data->Metadata->CreateAttribute<double>(TEXT("Planet_ReferenceRadiusMeters"),90.,false,true);
+    Data->Metadata->CreateAttribute<int32>(TEXT("Planet_Seed"),71,false,true);
+    Data->Metadata->CreateAttribute<double>(TEXT("Planet_SeaLevelMeters"),15.,false,true);
+    // Deliberately stale authoring context: accepted surface metadata must win.
+    Settings->PlanetToWorld=FTransform::Identity;Settings->ReferenceRadiusMeters=900;Settings->PlanetSeed=9;
+    Context=Run();Out=Cast<UPCGPointData>(Context->OutputData.TaggedData[0].Data);
+    auto* Alt=Out->Metadata->GetConstTypedAttribute<double>(TEXT("CE_AltitudeMeters"));
+    Water=Out->Metadata->GetConstTypedAttribute<bool>(TEXT("CE_Water"));
+    for(const auto& P:Out->GetPoints())
+    {
+        TestEqual(TEXT("Accepted reference radius replaces stale graph context"),Alt->GetValueFromItemKey(P.MetadataEntry),-5.);
+        TestTrue(TEXT("Accepted sea level replaces stale graph context"),Water->GetValueFromItemKey(P.MetadataEntry));
+    }
+    TestEqual(TEXT("Surface context never rewrites graph defaults"),Settings->ReferenceRadiusMeters,900.);
     return true;
 }
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCEPCGBatchesTest,"Catalyst.Ecosystem.PCG.PlanetarySurfaceBatches",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)

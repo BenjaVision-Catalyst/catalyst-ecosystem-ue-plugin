@@ -1,0 +1,12 @@
+{
+  "date": "2026-11-14",
+  "platform": "UE 5.8.4 Mac arm64 Metal SM6",
+  "nativeContextTestsPassed": [
+    "Catalyst.Ecosystem.PCG.FieldsFilterAndPlanetTransform",
+    "Catalyst.Ecosystem.PCG.PlanetarySurfaceBatches"
+  ],
+  "nativeReport": "/private/tmp/planet-surface-refresh-native-qualified-report/index.json",
+  "acceptedContextOverridesStaleGraphDefaults": true,
+  "profileAndGraphDefaultsUnchanged": true,
+  "newLandformDependency": false
+}

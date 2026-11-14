@@ -172,3 +172,16 @@ samplers without removing the memory guard. It validates the complete input
 before publishing results. Five native climate/PCG tests pass, including native
 query/preview parity and an 80,000-point two-batch execution. Planet-wide world
 deployment and automatic regeneration are not added by this query API.
+
+
+## Accepted surface context in PCG
+
+Surface point batches may provide `Planet_ToWorld` (Transform),
+`Planet_ReferenceRadiusMeters` (double), `Planet_Seed` (int32) and
+`Planet_SeaLevelMeters` (double) as typed default metadata. The climate node uses
+this complete, consistent accepted context instead of its graph-authoring
+snapshot. This keeps reference radius, frame, seed and OceanHeight current after
+a terrain provider regenerates its regions. Invalid, partial or mixed contexts
+are rejected. Standalone inputs without this metadata retain explicit graph
+settings. The consumer adds no dependency on Landform and rewrites neither the
+profile nor the graph. Landform owns the editor's terrain-change refresh queue.

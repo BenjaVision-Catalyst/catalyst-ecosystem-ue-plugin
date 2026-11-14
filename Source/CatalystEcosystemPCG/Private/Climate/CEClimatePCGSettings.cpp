@@ -17,10 +17,32 @@ protected:
     virtual bool ExecuteInternal(FPCGContext* Context) const override
     {
         const auto* S=Context->GetInputSettings<UCEClimatePCGSettings>();FString Error;
-        if(!S||!S->Profile||!S->Profile->Ecosystem.Validate(Error)||!UCEClimatePCGSettings::ValidateFrame(S->PlanetToWorld,S->ReferenceRadiusMeters,Error))
+        if(!S||!S->Profile||!S->Profile->Ecosystem.Validate(Error))
         {UE_LOG(LogCEClimate,Error,TEXT("Climate input rejected: %s"),Error.IsEmpty()?TEXT("Missing ecosystem profile"):*Error);return true;}
         FCEPlanetEcosystem Model=S->Profile->Ecosystem;
-        if(S->bOverrideSeaLevel)
+        FTransform Frame=S->PlanetToWorld;double Reference=S->ReferenceRadiusMeters;int32 Seed=S->PlanetSeed;
+        // Generic accepted-surface metadata supersedes an old graph-authoring
+        // snapshot, without a dependency on the terrain producer's plugin.
+        const auto SurfaceInputs=Context->InputData.GetInputsByPin(PCGPinConstants::DefaultInputLabel);
+        bool HasSurfaceContext=false;int32 ContextCount=0;double SurfaceSeaLevel=0;
+        for(const auto& Input:SurfaceInputs)
+        {
+            const auto* Points=Cast<UPCGPointData>(Input.Data);const auto* M=Points?Points->Metadata.Get():nullptr;
+            const auto* F=M?M->GetConstTypedAttribute<FTransform>(TEXT("Planet_ToWorld")):nullptr;
+            const auto* R=M?M->GetConstTypedAttribute<double>(TEXT("Planet_ReferenceRadiusMeters")):nullptr;
+            const auto* P=M?M->GetConstTypedAttribute<int32>(TEXT("Planet_Seed")):nullptr;
+            const auto* Sea=M?M->GetConstTypedAttribute<double>(TEXT("Planet_SeaLevelMeters")):nullptr;
+            if(!F&&!R&&!P&&!Sea){if(HasSurfaceContext){UE_LOG(LogCEClimate,Error,TEXT("Mixed surface contexts."));return true;}continue;}
+            if(!F||!R||!P||!Sea){UE_LOG(LogCEClimate,Error,TEXT("Incomplete surface context."));return true;}
+            const auto NewFrame=F->GetValueFromItemKey(PCGInvalidEntryKey);const double NewReference=R->GetValueFromItemKey(PCGInvalidEntryKey),NewSea=Sea->GetValueFromItemKey(PCGInvalidEntryKey);const int32 NewSeed=P->GetValueFromItemKey(PCGInvalidEntryKey);
+            if(!UCEClimatePCGSettings::ValidateFrame(NewFrame,NewReference,Error)||!FMath::IsFinite(NewSea)||(HasSurfaceContext&&(!Frame.Equals(NewFrame)||Reference!=NewReference||Seed!=NewSeed||SurfaceSeaLevel!=NewSea)))
+            {UE_LOG(LogCEClimate,Error,TEXT("Invalid or inconsistent accepted surface context."));return true;}
+            Frame=NewFrame;Reference=NewReference;Seed=NewSeed;SurfaceSeaLevel=NewSea;HasSurfaceContext=true;++ContextCount;
+        }
+        if(!UCEClimatePCGSettings::ValidateFrame(Frame,Reference,Error)){UE_LOG(LogCEClimate,Error,TEXT("Climate frame rejected: %s"),*Error);return true;}
+        if(HasSurfaceContext&&ContextCount!=SurfaceInputs.Num()){UE_LOG(LogCEClimate,Error,TEXT("Mixed surface contexts."));return true;}
+        if(HasSurfaceContext)Model.Climate.SeaLevelMeters=SurfaceSeaLevel;
+        else if(S->bOverrideSeaLevel)
         {
             if(!FMath::IsFinite(S->SeaLevelMeters)){UE_LOG(LogCEClimate,Error,TEXT("OceanHeight context must be finite."));return true;}
             Model.Climate.SeaLevelMeters=S->SeaLevelMeters;
@@ -36,7 +58,7 @@ protected:
         // Validate the complete batch before publishing anything.
         for(const auto* Points:PointInputs)for(const auto& P:Points->GetPoints())
         {
-            const FVector Body=S->PlanetToWorld.InverseTransformPosition(P.Transform.GetLocation())*.01;
+            const FVector Body=Frame.InverseTransformPosition(P.Transform.GetLocation())*.01;
             if(Body.ContainsNaN()||!FMath::IsFinite(Body.SizeSquared())||Body.IsNearlyZero()||!P.Transform.GetRotation().IsNormalized())
             {UE_LOG(LogCEClimate,Error,TEXT("Climate surface points require finite positions away from the planet centre and finite rotations."));return true;}
         }
@@ -56,9 +78,9 @@ protected:
             auto& Dest=Out->GetMutablePoints();
             for(const auto& Point:PointInputs[I]->GetPoints())
             {
-                const FVector Body=S->PlanetToWorld.InverseTransformPosition(Point.Transform.GetLocation())*.01;
-                const FVector Normal=S->PlanetToWorld.InverseTransformVectorNoScale(Point.Transform.GetRotation().GetAxisZ());
-                const auto Sample=FCEClimateEvaluator::Evaluate(Model,Body,Normal,S->ReferenceRadiusMeters,S->PlanetSeed);
+                const FVector Body=Frame.InverseTransformPosition(Point.Transform.GetLocation())*.01;
+                const FVector Normal=Frame.InverseTransformVectorNoScale(Point.Transform.GetRotation().GetAxisZ());
+                const auto Sample=FCEClimateEvaluator::Evaluate(Model,Body,Normal,Reference,Seed);
                 if(S->TargetBiome.IsValid()&&Sample.BiomeId!=S->TargetBiome)continue;
                 auto& P=Dest.Add_GetRef(Point);P.MetadataEntry=M->AddEntry(Point.MetadataEntry);
                 Temp->SetValue(P.MetadataEntry,Sample.TemperatureC);Wet->SetValue(P.MetadataEntry,Sample.Moisture);Alt->SetValue(P.MetadataEntry,Sample.AltitudeMeters);
