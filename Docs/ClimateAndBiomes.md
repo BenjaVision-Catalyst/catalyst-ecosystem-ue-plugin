@@ -155,3 +155,20 @@ can omit Landform. Rebuild Ecosystem when adding/removing that compile-time capa
 Authoritative ecological behaviour remains in CatalystEcosystem; future accepted
 state rendering will use CatalystSimulator's shared APIs. Local deterministic
 planet authoring does not invent a Simulator connection or duplicate its lifecycle.
+
+
+## Planetary coverage queries
+
+`UCEClimateQueryLibrary::EvaluateSurface` exposes the same native evaluator used
+by the globe and PCG. Supply body-space metre positions, surface normals, the
+accepted reference radius, Planet seed and OceanHeight datum. It returns winning
+biome IDs without modifying the profile; batches are bounded to 65,536 points.
+This supports appearance-mask baking and independent placement checks. Physical
+ground-cover/deposit generation is still a separate contract.
+
+The PCG filter accepts multiple data sets, each bounded to 65,536 points, with an
+aggregate two-million-point execution limit. This permits tiled planetary surface
+samplers without removing the memory guard. It validates the complete input
+before publishing results. Five native climate/PCG tests pass, including native
+query/preview parity and an 80,000-point two-batch execution. Planet-wide world
+deployment and automatic regeneration are not added by this query API.

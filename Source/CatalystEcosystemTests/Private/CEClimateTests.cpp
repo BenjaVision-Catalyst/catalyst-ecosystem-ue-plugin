@@ -2,6 +2,7 @@
 #include "Misc/AutomationTest.h"
 #include "Model/CEPlanetEcosystem.h"
 #include "Climate/CEClimatePCGSettings.h"
+#include "Climate/CEClimateQueryLibrary.h"
 #include "PCGGraph.h"
 #include "PCGNode.h"
 #include "PCGContext.h"
@@ -34,6 +35,24 @@ bool FCEClimateTest::RunTest(const FString&)
     auto SeamA=FCEClimateEvaluator::Evaluate(M,FVector(-100,1.e-7,0),FVector(-1,0,0),100,17),SeamB=FCEClimateEvaluator::Evaluate(M,FVector(-100,-1.e-7,0),FVector(-1,0,0),100,17);
     TestTrue(TEXT("No longitude seam"),FMath::Abs(SeamA.TemperatureC-SeamB.TemperatureC)<1.e-6&&FMath::Abs(SeamA.Moisture-SeamB.Moisture)<1.e-6);
     return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCECoverageQueryTest,"Catalyst.Ecosystem.Climate.CoverageQueryMatchesPreview",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FCECoverageQueryTest::RunTest(const FString&)
+{
+    TStrongObjectPtr<UCEPlanetEcosystemAsset> Profile(NewObject<UCEPlanetEcosystemAsset>());
+    TArray<FVector> P,N;TArray<FGuid> Ids;
+    for(int32 I=0;I<2048;++I)
+    {
+        const double Z=1-2*(I+.5)/2048,A=I*2.399963229728653;
+        const FVector D(FMath::Sqrt(1-Z*Z)*FMath::Cos(A),FMath::Sqrt(1-Z*Z)*FMath::Sin(A),Z);
+        P.Add(D*(100+I%30));N.Add(D);
+    }
+    TestTrue(TEXT("Body-space query accepts a complete globe"),UCEClimateQueryLibrary::EvaluateSurface(Profile.Get(),P,N,100,1729,5,Ids));
+    auto Model=Profile->Ecosystem;Model.Climate.SeaLevelMeters=5;
+    if(!TestEqual(TEXT("Every position classified"),Ids.Num(),P.Num()))return false;
+    for(int32 I=0;I<P.Num();++I)TestEqual(TEXT("Coverage material query uses the preview evaluator"),Ids[I],FCEClimateEvaluator::Evaluate(Model,P[I],N[I],100,1729).BiomeId);
+    N.Pop();TestFalse(TEXT("Mismatched normals rejected atomically"),UCEClimateQueryLibrary::EvaluateSurface(Profile.Get(),P,N,100,1729,5,Ids));
+    TestTrue(TEXT("Invalid batch publishes no partial coverage"),Ids.IsEmpty());return true;
 }
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCEValidationTest,"Catalyst.Ecosystem.Climate.ValidationAndModelRoundTrip",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
 bool FCEValidationTest::RunTest(const FString&)
@@ -85,5 +104,32 @@ bool FCEPCGTest::RunTest(const FString&)
     Settings->bOverrideSeaLevel=false;Context=Run();Out=Cast<UPCGPointData>(Context->OutputData.TaggedData[0].Data);
     Water=Out->Metadata->GetConstTypedAttribute<bool>(TEXT("CE_Water"));
     for(const auto& P:Out->GetPoints())TestFalse(TEXT("Standalone PCG retains its explicit profile datum"),Water->GetValueFromItemKey(P.MetadataEntry));
+    return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCEPCGBatchesTest,"Catalyst.Ecosystem.PCG.PlanetarySurfaceBatches",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FCEPCGBatchesTest::RunTest(const FString&)
+{
+    TStrongObjectPtr<UPCGGraph> Graph(NewObject<UPCGGraph>());UCEClimatePCGSettings* S=nullptr;auto* Node=Graph->AddNodeOfType(S);
+    TStrongObjectPtr<UCEPlanetEcosystemAsset> Profile(NewObject<UCEPlanetEcosystemAsset>());S->Profile=Profile.Get();S->ReferenceRadiusMeters=100;
+    TStrongObjectPtr<UPCGPointData> A(NewObject<UPCGPointData>()),B(NewObject<UPCGPointData>());
+    for(auto* Data:{A.Get(),B.Get()})
+    {
+        auto& Points=Data->GetMutablePoints();Points.SetNum(40000);
+        const FVector D=Data==A.Get()?FVector::ZAxisVector:FVector::XAxisVector;
+        for(int32 I=0;I<Points.Num();++I){Points[I].Transform=FTransform(FQuat::FindBetweenNormals(FVector::ZAxisVector,D),D*10000);Points[I].Seed=I;}
+    }
+    FPCGDataCollection In;for(auto* Data:{A.Get(),B.Get()}){auto& T=In.TaggedData.AddDefaulted_GetRef();T.Data=Data;T.Pin=TEXT("In");}
+    auto Element=S->GetElement();TUniquePtr<FPCGContext> C(Element->Initialize(FPCGInitializeElementParams(&In,{},Node)));C->AsyncState.NumAvailableTasks=1;
+    int32 Steps=0;while(!Element->Execute(C.Get())&&++Steps<100){}
+    if(!TestEqual(TEXT("A planetary tile accepts multiple bounded batches"),C->OutputData.TaggedData.Num(),2))return false;
+    for(int32 I=0;I<2;++I)
+    {
+        const auto* Out=Cast<UPCGPointData>(C->OutputData.TaggedData[I].Data);if(!TestNotNull(TEXT("Native point data output"),Out))return false;
+        TestEqual(TEXT("Every batch retains all of its points"),Out->GetPoints().Num(),40000);
+        const FVector D=I==0?FVector::ZAxisVector:FVector::XAxisVector;
+        const FString Expected=FCEClimateEvaluator::Evaluate(Profile->Ecosystem,D*100,D,100,1729).BiomeId.ToString(EGuidFormats::Digits);
+        const auto* Id=Out->Metadata->GetConstTypedAttribute<FString>(TEXT("CE_BiomeId"));if(!TestNotNull(TEXT("Every batch has classification metadata"),Id))return false;
+        TestEqual(TEXT("Last point classification agrees with preview"),Id->GetValueFromItemKey(Out->GetPoints().Last().MetadataEntry),Expected);
+    }
     return true;
 }

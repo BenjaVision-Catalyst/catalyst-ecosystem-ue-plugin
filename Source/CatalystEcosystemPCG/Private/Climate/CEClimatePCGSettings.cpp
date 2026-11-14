@@ -30,7 +30,7 @@ protected:
         for(const auto& Input:Inputs)
         {
             const auto* Spatial=Cast<UPCGSpatialData>(Input.Data);const auto* Points=Spatial?Spatial->ToPointData(Context):nullptr;
-            if(!Points||(Count+=Points->GetPoints().Num())>65536){UE_LOG(LogCEClimate,Error,TEXT("Climate requires at most 65536 surface points per execution."));return true;}
+            if(!Points||Points->GetPoints().Num()>65536||(Count+=Points->GetPoints().Num())>2000000){UE_LOG(LogCEClimate,Error,TEXT("Climate requires batches of at most 65536 surface points and at most two million points per execution."));return true;}
             PointInputs.Add(Points);
         }
         // Validate the complete batch before publishing anything.
