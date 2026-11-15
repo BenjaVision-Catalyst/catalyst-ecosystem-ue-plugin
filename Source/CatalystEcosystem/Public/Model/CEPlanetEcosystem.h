@@ -47,11 +47,38 @@ struct CATALYSTECOSYSTEM_API FCEBiomeDefinition
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Appearance") FName GroundCoverMaskParameter;
 };
 USTRUCT(BlueprintType)
+struct CATALYSTECOSYSTEM_API FCEAuthoredWeatherEvent
+{
+    GENERATED_BODY()
+    UPROPERTY(EditAnywhere, Category="Event", meta=(IgnoreForMemberInitializationTest)) FGuid Id=FGuid::NewGuid();
+    UPROPERTY(EditAnywhere, Category="Event") FString Name=TEXT("Tornado and parent storm");
+    UPROPERTY(EditAnywhere, Category="Event") bool bEnabled=true;
+    UPROPERTY(EditAnywhere, Category="Schedule", meta=(ClampMin="0",Units="s")) double StartSeconds=0;
+    UPROPERTY(EditAnywhere, Category="Schedule", meta=(ClampMin="60",Units="s")) double DurationSeconds=10800;
+    UPROPERTY(EditAnywhere, Category="Storm", meta=(ClampMin="0",ClampMax="150",Units="m/s")) double WindSpeed=50;
+    UPROPERTY(EditAnywhere, Category="Storm", meta=(ClampMin="10",Units="m")) double RadiusMeters=100;
+    UPROPERTY(EditAnywhere, Category="Storm", meta=(ClampMin="0",ClampMax="1")) double Moisture=.8;
+    /** Body directions for a cubic spline, sampled by arc length. Radius is supplied by the designed planet. */
+    UPROPERTY(EditAnywhere, Category="Path") TArray<FVector> PathDirections={FVector(1,0,0),FVector(1,.5,.2),FVector(.5,1,.2)};
+};
+USTRUCT(BlueprintType)
+struct CATALYSTECOSYSTEM_API FCEWeatherSettings
+{
+    GENERATED_BODY()
+    UPROPERTY(EditAnywhere, Category="Weather") int32 Seed=1729;
+    UPROPERTY(EditAnywhere, Category="Weather", meta=(ClampMin="0",ClampMax="3")) double RegionalStrength=1;
+    UPROPERTY(EditAnywhere, Category="Weather", meta=(ClampMin="0",ClampMax="40",Units="m/s")) double PrevailingWind=6;
+    UPROPERTY(EditAnywhere, Category="Weather", meta=(ClampMin="600",ClampMax="604800",Units="s")) double CirculationSeconds=21600;
+    UPROPERTY(EditAnywhere, Category="Weather", meta=(ClampMin="600",ClampMax="604800",Units="s")) double DaySeconds=86400;
+    UPROPERTY(EditAnywhere, Category="Authored events") TArray<FCEAuthoredWeatherEvent> Events;
+};
+USTRUCT(BlueprintType)
 struct CATALYSTECOSYSTEM_API FCEPlanetEcosystem
 {
     GENERATED_BODY()
     UPROPERTY(VisibleAnywhere, Category="Version") int32 SchemaVersion = 1;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Climate", meta=(ShowOnlyInnerProperties)) FCEClimateSettings Climate;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Weather") FCEWeatherSettings Weather;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Biomes") TArray<FCEBiomeDefinition> Biomes;
     static FCEPlanetEcosystem MakeDefault();
     bool Validate(FString& Error) const;

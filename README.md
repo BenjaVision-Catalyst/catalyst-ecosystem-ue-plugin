@@ -10,14 +10,15 @@ footprint for every enabled biome. Habitat preferences guide placement and relax
 when needed. The Biomes map, planet-bound PCG and appearance queries use the same
 assignments and regenerate through the existing Landform region queue. The editor
 bridge builds climate-filtered Biome Core generators. Weather uses the planet
-under design and its existing globe; its data controls remain unavailable until
-the deterministic weather model is connected.
+under design and its existing globe; its Temperature, Wind and Rain overlays now run the GT-authored deterministic
+weather model. Last hour/Now/Next hour, scrubbing, pause/play and time advance
+operate on simulation time. See [Weather](Docs/Weather.md) for scope and inputs.
 
 See [Climate and Biomes](Docs/ClimateAndBiomes.md) for model, integration and limits,
 and [qualification](Docs/Qualification.md) for the exact engine/platform coverage.
 The workspace checkout is `Ecosystems/catalyst-ecosystem-ue-plugin`.
 
-Install alongside CatalystFoundation and PCG. Add CatalystLandform for the Planet
+Install alongside CatalystFoundation, CatalystSimulator and PCG. Add CatalystLandform for the Planet
 Builder integration, and enable PCGBiomeCore in the host for the generator bridge.
 Restart the editor after compiling reflected native changes. The project must use
 plugins built against its engine version; Landform's pinned 5.7 host and VPPTest58

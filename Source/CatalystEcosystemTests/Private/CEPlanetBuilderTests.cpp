@@ -42,11 +42,12 @@ struct FToolkitReview : IAutomationLatentCommand
     FAutomationTestBase* Test;
     TStrongObjectPtr<UCLPlanetRecipeAsset> Planet{NewObject<UCLPlanetRecipeAsset>()};
     TStrongObjectPtr<UCEPlanetEcosystemAsset> Profile{NewObject<UCEPlanetEcosystemAsset>()};
-    struct FPreviewMetrics{int32 Samples=-1;TArray<FLinearColor> Colors;};
+    struct FPreviewMetrics{int32 Samples=-1,WindVectors=0;TArray<FLinearColor> Colors;};
     TSharedRef<FPreviewMetrics> Metrics=MakeShared<FPreviewMetrics>();
     TOptional<FCLPlanetBuilderProvider> OriginalProvider;
-    TSharedPtr<SWindow> Window;int32 Stage=0,FullSamples=0;double Start=FPlatformTime::Seconds(),ReadyAt=0;
+    TSharedPtr<SWindow> Window;int32 Stage=0,FullSamples=0;double Start=FPlatformTime::Seconds(),ReadyAt=0,CaptureReady=0;
     bool PlanetDirtyBeforeWeather=false,ProfileDirtyBeforeWeather=false;
+    TArray<FLinearColor> WeatherNowColors,WeatherPastColors,WeatherFutureColors;
     explicit FToolkitReview(FAutomationTestBase* T):Test(T)
     {
         Planet->Recipe=FCLPlanetCompiler::BasePlanet();Planet->Recipe.Name=TEXT("Ecosystem globe qualification");Planet->Recipe.RadiusMeters=100;
@@ -58,7 +59,7 @@ struct FToolkitReview : IAutomationLatentCommand
             Observed.Create=[Create,View](FCLPlanetBuilderContext Context)
             {
                 const auto Publish=Context.PublishOverlay;
-                Context.PublishOverlay=[Publish,View](auto Overlay){View->Samples=Overlay?Overlay->BodyMeters.Num():-1;View->Colors=Overlay?Overlay->Colors:TArray<FLinearColor>();Publish(Overlay);};
+                Context.PublishOverlay=[Publish,View](auto Overlay){View->Samples=Overlay?Overlay->BodyMeters.Num():-1;View->WindVectors=Overlay?Overlay->BodyVectorsMeters.Num():0;View->Colors=Overlay?Overlay->Colors:TArray<FLinearColor>();Publish(Overlay);};
                 return Create(MoveTemp(Context));
             };
             FCLPlanetBuilderExtensions::Register(MoveTemp(Observed));break;
@@ -67,6 +68,7 @@ struct FToolkitReview : IAutomationLatentCommand
     }
     ~FToolkitReview(){if(OriginalProvider.IsSet())FCLPlanetBuilderExtensions::Register(OriginalProvider.GetValue());}
     bool Close(){GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->CloseAllEditorsForAsset(Planet.Get());return true;}
+    bool Settled(){if(!CaptureReady){CaptureReady=FPlatformTime::Seconds();return false;}if(FPlatformTime::Seconds()-CaptureReady<.4)return false;CaptureReady=0;return true;}
     void Capture(const TCHAR* Name)
     {
         TArray<FColor> Pixels;FIntVector Size;if(Test->TestTrue(TEXT("Actual Planet editor renders"),FSlateApplication::Get().TakeScreenshot(Window.ToSharedRef(),Pixels,Size)))
@@ -127,22 +129,57 @@ struct FToolkitReview : IAutomationLatentCommand
         }
         if(Stage==6)
         {
-            if(FPlatformTime::Seconds()-ReadyAt<2)return false;
-            Test->TestEqual(TEXT("Weather clears the biome overlay and late preview results do not republish it"),Metrics->Samples,-1);
-            Test->TestTrue(TEXT("Weather is bound to the planet under design"),Text.Contains(Planet->Recipe.Name));
-            Test->TestTrue(TEXT("Missing weather is explicit"),Text.Contains(TEXT("Weather data is not available for this planet yet.")));
-            for(const TCHAR* Name:{TEXT("Temperature (°C)"),TEXT("Wind (m/s)"),TEXT("Rain (mm/h)"),TEXT("Last hour"),TEXT("Now"),TEXT("Next hour")})
-            {
-                int32 Index=0;auto Control=Button(Window.ToSharedRef(),Name,Index);
-                if(Test->TestTrue(FString(Name)+TEXT(" control exists"),Control.IsValid()))
-                    Test->TestFalse(TEXT("Unavailable weather controls do not imply live data"),Control->IsEnabled());
-            }
-            Test->TestEqual(TEXT("Opening Weather preserves planet authoring"),Planet->GetOutermost()->IsDirty(),PlanetDirtyBeforeWeather);
-            Test->TestEqual(TEXT("Opening Weather preserves ecosystem authoring"),Profile->GetOutermost()->IsDirty(),ProfileDirtyBeforeWeather);
-            Test->TestTrue(TEXT("Weather preserves the explicit ecosystem link"),Planet->AuthoringExtensions.FindRef(TEXT("CatalystEcosystem"))==FSoftObjectPath(Profile.Get()));
-            Capture(TEXT("weather"));if(!Toggle(TEXT("Climate")))return Close();Stage=7;return false;
+            if(Metrics->Samples<=0||!Text.Contains(TEXT("Planet range")))return false;
+            Test->TestTrue(TEXT("Weather is bound to the designed planet"),Text.Contains(Planet->Recipe.Name));
+            Test->TestTrue(TEXT("Temperature legend is present"),Text.Contains(TEXT("40 °C red")));
+            Test->TestEqual(TEXT("Weather preview preserves planet authoring"),Planet->GetOutermost()->IsDirty(),PlanetDirtyBeforeWeather);
+            Test->TestEqual(TEXT("Weather preview preserves ecosystem authoring"),Profile->GetOutermost()->IsDirty(),ProfileDirtyBeforeWeather);
+            if(!Settled())return false;WeatherNowColors=Metrics->Colors;Capture(TEXT("weather-temperature"));
+            int32 Index=0;auto B=Button(Window.ToSharedRef(),TEXT("Last hour"),Index);if(!Test->TestTrue(TEXT("History is enabled"),B&&B->IsEnabled()))return Close();B->SimulateClick();Stage=7;return false;
         }
-        if(Stage==7&&Metrics->Samples==FullSamples)return Close();
+        if(Stage==7)
+        {
+            if(!Text.Contains(TEXT("History at 00:00:00")))return false;
+            if(!Settled())return false;WeatherPastColors=Metrics->Colors;Test->TestTrue(TEXT("History contains different weather"),WeatherPastColors!=WeatherNowColors);Capture(TEXT("weather-history"));
+            int32 Index=0;auto B=Button(Window.ToSharedRef(),TEXT("Next hour"),Index);if(!B)return Close();B->SimulateClick();Stage=8;return false;
+        }
+        if(Stage==8)
+        {
+            if(!Text.Contains(TEXT("Forecast at 02:00:00")))return false;
+            if(!Settled())return false;Test->TestTrue(TEXT("Forecast contains different weather"),Metrics->Colors!=WeatherPastColors);
+            Test->TestTrue(TEXT("Forecast does not advance live time"),Text.Contains(TEXT("Simulation time · 01:00:00")));Capture(TEXT("weather-forecast"));
+            WeatherFutureColors=Metrics->Colors;int32 Index=0;auto B=Button(Window.ToSharedRef(),TEXT("Now"),Index);if(!B)return Close();B->SimulateClick();Stage=9;return false;
+        }
+        if(Stage==9)
+        {
+            if(!Text.Contains(TEXT("Now at 01:00:00")))return false;
+            Test->TestTrue(TEXT("Now is reproduced after scrubbing"),Metrics->Colors==WeatherNowColors);
+            if(!Toggle(TEXT("Wind (m/s)")))return Close();Stage=10;return false;
+        }
+        if(Stage==10)
+        {
+            if(!Text.Contains(TEXT("60 m/s yellow")))return false;
+            if(!Settled())return false;Test->TestTrue(TEXT("Wind direction vectors are published"),Metrics->WindVectors>0);Test->TestTrue(TEXT("Wind uses its own field"),Metrics->Colors!=WeatherNowColors);Capture(TEXT("weather-wind"));
+            if(!Toggle(TEXT("Rain (mm/h)")))return Close();Stage=11;return false;
+        }
+        if(Stage==11)
+        {
+            if(!Text.Contains(TEXT("50 mm/h violet")))return false;
+            if(!Settled())return false;Capture(TEXT("weather-rain"));if(!Toggle(TEXT("Temperature (°C)")))return Close();int32 Index=0;auto B=Button(Window.ToSharedRef(),TEXT("Advance hour"),Index);if(!B)return Close();B->SimulateClick();Stage=12;return false;
+        }
+        if(Stage==12)
+        {
+            if(!Text.Contains(TEXT("Now at 02:00:00")))return false;
+            Test->TestTrue(TEXT("Later accepted live view equals earlier forecast"),Metrics->Colors==WeatherFutureColors);
+            int32 Index=0;auto B=Button(Window.ToSharedRef(),TEXT("Play"),Index);if(!B)return Close();B->SimulateClick();Stage=13;return false;
+        }
+        if(Stage==13)
+        {
+            if(Text.Contains(TEXT("Simulation time · 02:00:00")))return false;
+            int32 Index=0;auto B=Button(Window.ToSharedRef(),TEXT("Pause"),Index);if(!Test->TestTrue(TEXT("Play advances and offers Pause"),B.IsValid()))return Close();B->SimulateClick();
+            if(!Toggle(TEXT("Climate")))return Close();Stage=14;return false;
+        }
+        if(Stage==14&&Metrics->Samples==FullSamples)return Close();
         return false;
     }
 };

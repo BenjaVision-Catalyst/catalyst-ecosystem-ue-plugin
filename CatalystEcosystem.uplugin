@@ -22,6 +22,10 @@
       "Name": "CatalystLandform",
       "Enabled": true,
       "Optional": true
+    },
+    {
+      "Name": "CatalystSimulator",
+      "Enabled": true
     }
   ],
   "Modules": [
