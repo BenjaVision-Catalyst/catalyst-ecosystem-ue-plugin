@@ -4,7 +4,8 @@ Open a planet recipe, choose **Ecosystem → Weather**. The existing designed gl
 shows Temperature (°C), Wind (m/s), Rain (mm/hour) or Pressure (hPa).
 A continuous translucent heatmap sits just behind pressure contours, H/L labels
 and wind arrows anchored along the contours. Isobars, arrows and heatmap can be
-shown independently.
+shown independently. The shell uses 18% opacity with saturated colour ramps;
+pressure runs blue through green to amber, avoiding a grey midpoint.
 Legends stay fixed while scrubbing. Last hour/Now/Next hour select views without
 changing simulation time. Play advances the preview at the chosen rate; Advance
 hour moves its frontier. Weather/terrain edits reset this preview and invalidate

@@ -39,7 +39,9 @@ TSharedPtr<const FCLPlanetBuilderOverlay> CEBuildWeatherGlobe(const FCEWeatherGl
             if(Layer==0)C=V<.5?FMath::Lerp(FLinearColor(.05,.15,.95),FLinearColor(.1,.8,.4),V*2):FMath::Lerp(FLinearColor(.1,.8,.4),FLinearColor(1,.08,.02),(V-.5)*2);
             else if(Layer==1)C=FMath::Lerp(FLinearColor(.02,.15,.5),FLinearColor(1,.85,.03),V);
             else if(Layer==2)C=V<.5?FMath::Lerp(FLinearColor(.09,.12,.18),FLinearColor(.02,.65,1),V*2):FMath::Lerp(FLinearColor(.02,.65,1),FLinearColor(.9,.04,.9),(V-.5)*2);
-            else C=FMath::Lerp(FLinearColor(.03,.35,.9),FLinearColor(1,.65,.03),V);
+            else C=V<.5?FMath::Lerp(FLinearColor(.01,.12,1),FLinearColor(.01,.8,.35),V*2):FMath::Lerp(FLinearColor(.01,.8,.35),FLinearColor(1,.5,.01),(V-.5)*2);
+            // Keep the tint legible through the transparent shell without a grey midpoint.
+            auto HSV=C.LinearRGBToHSV();HSV.G=FMath::Lerp(HSV.G,1.f,.35f);C=HSV.HSVToLinearRGB();
             O->MeshBodyMeters.Add(M.Directions[I]*HeatRadius);O->MeshColors.Add(C);
         }
     }

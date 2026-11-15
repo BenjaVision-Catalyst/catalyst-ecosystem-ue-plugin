@@ -19,6 +19,10 @@
 #include "UObject/StrongObjectPtr.h"
 #include "ImageUtils.h"
 #include "ShaderCompiler.h"
+#include "SEditorViewport.h"
+#include "EditorViewportClient.h"
+#include "Components/DynamicMeshComponent.h"
+#include "UObject/UObjectIterator.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 namespace
@@ -37,6 +41,11 @@ TSharedPtr<SButton> Button(TSharedRef<SWidget> W,const FString& Text,int32& Inde
 {
     if(W->GetType()==FName(TEXT("SButton"))&&WidgetText(W)==Text&&Index--==0)return StaticCastSharedRef<SButton>(W);
     auto* C=W->GetChildren();for(int32 I=0;I<C->Num();++I)if(auto R=Button(C->GetChildAt(I),Text,Index))return R;return nullptr;
+}
+TSharedPtr<SEditorViewport> PlanetViewport(TSharedRef<SWidget> W)
+{
+    if(W->GetType()==FName(TEXT("SCLPlanetPreview")))return StaticCastSharedRef<SEditorViewport>(W);
+    auto* C=W->GetChildren();for(int32 I=0;I<C->Num();++I)if(auto V=PlanetViewport(C->GetChildAt(I)))return V;return nullptr;
 }
 struct FToolkitReview : IAutomationLatentCommand
 {
@@ -70,7 +79,20 @@ struct FToolkitReview : IAutomationLatentCommand
     }
     ~FToolkitReview(){if(OriginalProvider.IsSet())FCLPlanetBuilderExtensions::Register(OriginalProvider.GetValue());}
     bool Close(){GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->CloseAllEditorsForAsset(Planet.Get());return true;}
-    bool Settled(){if(GShaderCompilingManager&&GShaderCompilingManager->IsCompiling())return false;if(!CaptureReady){CaptureReady=FPlatformTime::Seconds();return false;}if(FPlatformTime::Seconds()-CaptureReady<.4)return false;CaptureReady=0;return true;}
+    bool Settled()
+    {
+        if(GShaderCompilingManager&&GShaderCompilingManager->IsCompiling())return false;
+        if(Metrics->MeshRadius>0)
+        {
+            // Payload publication can precede VPP's accepted surface. Wait for the
+            // actual shell component to become visible before checking its pixels.
+            auto V=PlanetViewport(Window.ToSharedRef());bool Visible=false;
+            if(V&&V->GetViewportClient())for(TObjectIterator<UDynamicMeshComponent> C;C;++C)
+                if(C->GetWorld()==V->GetViewportClient()->GetWorld()&&C->IsVisible()&&C->GetMaterial(0)&&C->GetMaterial(0)->GetOuter()==*C){Visible=true;break;}
+            if(!Visible){CaptureReady=0;return false;}
+        }
+        if(!CaptureReady){CaptureReady=FPlatformTime::Seconds();return false;}if(FPlatformTime::Seconds()-CaptureReady<.4)return false;CaptureReady=0;return true;
+    }
     void Capture(const TCHAR* Name)
     {
         TArray<FColor> Pixels;FIntVector Size;if(Test->TestTrue(TEXT("Actual Planet editor renders"),FSlateApplication::Get().TakeScreenshot(Window.ToSharedRef(),Pixels,Size)))
