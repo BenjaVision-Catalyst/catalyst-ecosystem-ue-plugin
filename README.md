@@ -1,15 +1,17 @@
 # Catalyst Ecosystem Plugin
 
 Catalyst Ecosystem adds deterministic planetary climate and biome authoring to
-Unreal Engine. Its optional Landform Planet Builder section has **Climate** and
-**Biomes** sub-tabs, with a standard Unreal ecosystem asset picker above them.
+Unreal Engine. Its optional Landform Planet Builder section has **Climate**,
+**Biomes** and **Weather** sub-tabs, with a standard Unreal ecosystem asset picker above them.
 The plugin includes `Examples/DA_ExampleEcosystem` as the default for unlinked
 planets. Choose an existing asset or create a new ecosystem from the picker.
 A shared planet-wide placement plan guarantees at least 1% of supported surface
 footprint for every enabled biome. Habitat preferences guide placement and relax
 when needed. The Biomes map, planet-bound PCG and appearance queries use the same
 assignments and regenerate through the existing Landform region queue. The editor
-bridge builds climate-filtered Biome Core generators.
+bridge builds climate-filtered Biome Core generators. Weather uses the planet
+under design and its existing globe; its data controls remain unavailable until
+the deterministic weather model is connected.
 
 See [Climate and Biomes](Docs/ClimateAndBiomes.md) for model, integration and limits,
 and [qualification](Docs/Qualification.md) for the exact engine/platform coverage.

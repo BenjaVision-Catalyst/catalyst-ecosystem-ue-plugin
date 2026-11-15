@@ -74,14 +74,18 @@ public:
             +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(SHorizontalBox)
                 +SHorizontalBox::Slot().FillWidth(1)[SNew(SCheckBox).Style(FAppStyle::Get(),"DetailsView.SectionButton")
                     .IsChecked_Lambda([this]{return Subtab==0?ECheckBoxState::Checked:ECheckBoxState::Unchecked;})
-                    .OnCheckStateChanged_Lambda([this](ECheckBoxState C){if(C==ECheckBoxState::Checked)Subtab=0;})[Label(TEXT("Climate"))]]
+                    .OnCheckStateChanged_Lambda([this](ECheckBoxState C){if(C==ECheckBoxState::Checked)SelectSubtab(0);})[Label(TEXT("Climate"))]]
                 +SHorizontalBox::Slot().FillWidth(1)[SNew(SCheckBox).Style(FAppStyle::Get(),"DetailsView.SectionButton")
                     .IsChecked_Lambda([this]{return Subtab==1?ECheckBoxState::Checked:ECheckBoxState::Unchecked;})
-                    .OnCheckStateChanged_Lambda([this](ECheckBoxState C){if(C==ECheckBoxState::Checked)Subtab=1;})[Label(TEXT("Biomes"))]]]
+                    .OnCheckStateChanged_Lambda([this](ECheckBoxState C){if(C==ECheckBoxState::Checked)SelectSubtab(1);})[Label(TEXT("Biomes"))]]
+                +SHorizontalBox::Slot().FillWidth(1)[SNew(SCheckBox).Style(FAppStyle::Get(),"DetailsView.SectionButton")
+                    .IsChecked_Lambda([this]{return Subtab==2?ECheckBoxState::Checked:ECheckBoxState::Unchecked;})
+                    .OnCheckStateChanged_Lambda([this](ECheckBoxState C){if(C==ECheckBoxState::Checked)SelectSubtab(2);})[Label(TEXT("Weather"))]]]
             +SVerticalBox::Slot().FillHeight(1)[SAssignNew(Pages,SWidgetSwitcher).WidgetIndex_Lambda([this]{return Subtab;})
                 +SWidgetSwitcher::Slot()[SAssignNew(ClimateBox,SVerticalBox)]
-                +SWidgetSwitcher::Slot()[SNew(SScrollBox)+SScrollBox::Slot()[SAssignNew(BiomeBox,SVerticalBox)]]]
-            +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(STextBlock).Visibility_Lambda([this]{return Status.IsEmpty()?EVisibility::Collapsed:EVisibility::Visible;}).AutoWrapText(true).Text_Lambda([this]{return FText::FromString(Status);})]];
+                +SWidgetSwitcher::Slot()[SNew(SScrollBox)+SScrollBox::Slot()[SAssignNew(BiomeBox,SVerticalBox)]]
+                +SWidgetSwitcher::Slot()[WeatherPage()]]
+            +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(STextBlock).Visibility_Lambda([this]{return Subtab==2||Status.IsEmpty()?EVisibility::Collapsed:EVisibility::Visible;}).AutoWrapText(true).Text_Lambda([this]{return FText::FromString(Status);})]];
         SyncProfile();
     }
     virtual ~SCEPlanetBuilder() override
@@ -97,9 +101,9 @@ public:
         if(Plan!=ObservedPlan){ObservedPlan=Plan;++Revision;bPreviewDirty=true;Context.PublishOverlay(nullptr);}
         if(Work.IsValid()&&Work.IsReady())
         {
-            auto Result=Work.Get();Work=TFuture<TSharedPtr<const FCLPlanetBuilderOverlay>>();if(bActive&&WorkRevision==Revision&&Result){Context.PublishOverlay(Result);Status.Reset();}
+            auto Result=Work.Get();Work=TFuture<TSharedPtr<const FCLPlanetBuilderOverlay>>();if(bActive&&Subtab!=2&&WorkRevision==Revision&&Result){Context.PublishOverlay(Result);Status.Reset();}
         }
-        if(bActive&&bPreviewDirty&&!Dragging&&!Work.IsValid()&&Profile.IsValid()&&Plan)StartPreview(Plan);
+        if(bActive&&Subtab!=2&&bPreviewDirty&&!Dragging&&!Work.IsValid()&&Profile.IsValid()&&Plan)StartPreview(Plan);
     }
 private:
     FCLPlanetBuilderContext Context;
@@ -121,6 +125,35 @@ private:
     FCEBiomePreviewState PreviewState;
     TSet<FGuid> Expanded;
     TUniquePtr<FScopedTransaction> Dragging;
+    void SelectSubtab(int32 Value)
+    {
+        if(Subtab==Value)return;
+        Subtab=Value;++Revision;bPreviewDirty=true;
+        if(Stop)Stop->Store(true);
+        Context.PublishOverlay(nullptr);
+    }
+    TSharedRef<SWidget> WeatherPage()
+    {
+        // This page shares the toolkit's planet and globe. Do not project static
+        // biome colours as weather or invent a timeline before data is bound.
+        return SNew(SVerticalBox)
+            +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(STextBlock)
+                .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+                .Text_Lambda([this]{const auto* Planet=Context.Planet.Get();return FText::FromString(Planet?Planet->Recipe.Name:TEXT("Planet unavailable"));})]
+            +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(STextBlock).AutoWrapText(true)
+                .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+                .Text(FText::FromString(TEXT("Weather data is not available for this planet yet.")))]
+            +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(SHorizontalBox)
+                +SHorizontalBox::Slot().FillWidth(1)[SNew(SButton).IsEnabled(false)[Label(TEXT("Temperature (°C)"))]]
+                +SHorizontalBox::Slot().FillWidth(1)[SNew(SButton).IsEnabled(false)[Label(TEXT("Wind (m/s)"))]]
+                +SHorizontalBox::Slot().FillWidth(1)[SNew(SButton).IsEnabled(false)[Label(TEXT("Rain (mm/h)"))]]]
+            +SVerticalBox::Slot().AutoHeight().Padding(4,12,4,4)[Label(TEXT("Simulation time"))]
+            +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(SHorizontalBox)
+                +SHorizontalBox::Slot().FillWidth(1)[SNew(SButton).IsEnabled(false)[Label(TEXT("Last hour"))]]
+                +SHorizontalBox::Slot().FillWidth(1)[SNew(SButton).IsEnabled(false)[Label(TEXT("Now"))]]
+                +SHorizontalBox::Slot().FillWidth(1)[SNew(SButton).IsEnabled(false)[Label(TEXT("Next hour"))]]]
+            +SVerticalBox::Slot().AutoHeight().Padding(8)[SNew(SSlider).IsEnabled(false).Value(.5f)];
+    }
     void Changed(){++Revision;bPreviewDirty=true;bRebuild=true;Context.PublishOverlay(nullptr);}
     void SyncProfile()
     {

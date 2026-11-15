@@ -133,3 +133,19 @@ than relying on debug text in the user interface.
 All seven Ecosystem climate, PCG and editor tests pass on UE 5.8.4 Mac arm64,
 including the actual Planet panel, asset picker, Solo/Unsolo, OceanHeight changes
 and preview visibility/undo. Evidence is in VPPTest58 Saved/EcosystemPanelCleanup.
+
+## Weather sub-tab qualification 15 November 2026
+
+UE 5.8.4 (CL 58902052), Mac arm64, ThatGame58 editor build passed in 20.07 seconds.
+All 13 `Catalyst.Ecosystem` automation tests passed (12 clean, one expected missing-
+asset warning in WalkingDeploymentGuard). The rendered NativePlanetBuilder test
+selects Weather in the existing Ecosystem section, verifies the explicit designed
+planet, and confirms that its unavailable layer/time controls remain disabled.
+It checks that biome overlays stay cleared after pending work can complete,
+returning to Climate restores coverage, and opening Weather leaves planet/profile
+authoring and the explicit ecosystem link unchanged.
+
+The fixture remains transient. The Weather screenshot is retained under
+`ThatGame58/Saved/EcosystemQualification/weather.png`; the complete native report
+is under `ThatGame58/Saved/WeatherTabQualification`. This qualifies the UI shell
+and preview lifecycle, not dynamic weather, historical fields or forecasting.

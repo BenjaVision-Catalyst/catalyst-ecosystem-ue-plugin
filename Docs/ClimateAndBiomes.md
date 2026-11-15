@@ -1,7 +1,7 @@
 # Planet climate and biome authoring
 
 Ecosystem adds one optional section to Landform's Planet Builder. That section has
-**Climate** and **Biomes** sub-tabs, using the same compact label style as Planet.
+**Climate**, **Biomes** and **Weather** sub-tabs, using the same compact label style as Planet.
 Optional sections appear before the final Preview tab. Landform owns terrain and its native VPP
 preview; Ecosystem owns climate, habitat classification and biome presentation.
 Landform remains usable without Ecosystem.
@@ -273,3 +273,17 @@ a recovery map and Python setup scripts are not reopening dependencies.
 for qualification. Rendered acceptance must cover fresh reopening, native player
 marker input, generation during movement, distant canopy and live terrain edits.
 Historical 96-region snapshot results do not qualify this runtime implementation.
+
+## Weather tab
+
+Weather belongs to the same Ecosystem section and the globe is the planet currently
+open in Planet Designer. It uses that toolkit's explicit planet context and its
+existing terrain preview; no second planet, world lookup or preview scene is
+created. Selecting Weather clears the biome overlay and fences/cancels pending
+biome work. Returning to Climate or Biomes restores its normal preview.
+
+The current Weather page identifies the planet and shows Temperature (°C), Wind
+(m/s), Rain (mm/h) and Last hour / Now / Next hour in simulation time. These controls
+are disabled with an explicit unavailable-data message until the deterministic
+weather model and its data binding are implemented. This UI shell does not
+fabricate weather, advance a clock or modify saved planet/ecosystem values.

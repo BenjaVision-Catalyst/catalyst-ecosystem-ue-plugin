@@ -46,6 +46,7 @@ struct FToolkitReview : IAutomationLatentCommand
     TSharedRef<FPreviewMetrics> Metrics=MakeShared<FPreviewMetrics>();
     TOptional<FCLPlanetBuilderProvider> OriginalProvider;
     TSharedPtr<SWindow> Window;int32 Stage=0,FullSamples=0;double Start=FPlatformTime::Seconds(),ReadyAt=0;
+    bool PlanetDirtyBeforeWeather=false,ProfileDirtyBeforeWeather=false;
     explicit FToolkitReview(FAutomationTestBase* T):Test(T)
     {
         Planet->Recipe=FCLPlanetCompiler::BasePlanet();Planet->Recipe.Name=TEXT("Ecosystem globe qualification");Planet->Recipe.RadiusMeters=100;
@@ -91,7 +92,7 @@ struct FToolkitReview : IAutomationLatentCommand
                 Test->TestTrue(TEXT("Every enabled biome has a meaningful visible map region"),Metrics->Colors.FilterByPredicate([&](const FLinearColor& C){return C.Equals(B.Color);}).Num()>=16);
             if(!ReadyAt){ReadyAt=FPlatformTime::Seconds();return false;}if(FPlatformTime::Seconds()-ReadyAt<3)return false;
             Test->TestTrue(TEXT("Preview is last after optional authoring sections"),Text.Contains(TEXT("PlanetGeologyProvincesEcosystemPreview")));
-            Test->TestTrue(TEXT("Both sub-tabs use the actual Planet extension"),Text.Contains(TEXT("ClimateBiomes")));
+            Test->TestTrue(TEXT("All three sub-tabs use the actual Planet extension"),Text.Contains(TEXT("ClimateBiomesWeather")));
             Test->TestFalse(TEXT("An independent sea-level editor is absent"),Text.Contains(TEXT("Sea Level Meters")));
             Capture(TEXT("planet-builder"));if(!Toggle(TEXT("Biomes")))return Close();Stage=2;return false;
         }
@@ -120,8 +121,28 @@ struct FToolkitReview : IAutomationLatentCommand
         if(Stage==5&&Text.Contains(TEXT("OceanHeight · 90.00 m"))&&Metrics->Samples==FullSamples)
         {
             Test->TestEqual(TEXT("Guide changes never rewrite stored climate settings"),Profile->Ecosystem.Climate.SeaLevelMeters,0.);
-            Capture(TEXT("ocean-height-guide"));return Close();
+            Capture(TEXT("ocean-height-guide"));
+            PlanetDirtyBeforeWeather=Planet->GetOutermost()->IsDirty();ProfileDirtyBeforeWeather=Profile->GetOutermost()->IsDirty();
+            if(!Toggle(TEXT("Weather")))return Close();ReadyAt=FPlatformTime::Seconds();Stage=6;return false;
         }
+        if(Stage==6)
+        {
+            if(FPlatformTime::Seconds()-ReadyAt<2)return false;
+            Test->TestEqual(TEXT("Weather clears the biome overlay and late preview results do not republish it"),Metrics->Samples,-1);
+            Test->TestTrue(TEXT("Weather is bound to the planet under design"),Text.Contains(Planet->Recipe.Name));
+            Test->TestTrue(TEXT("Missing weather is explicit"),Text.Contains(TEXT("Weather data is not available for this planet yet.")));
+            for(const TCHAR* Name:{TEXT("Temperature (°C)"),TEXT("Wind (m/s)"),TEXT("Rain (mm/h)"),TEXT("Last hour"),TEXT("Now"),TEXT("Next hour")})
+            {
+                int32 Index=0;auto Control=Button(Window.ToSharedRef(),Name,Index);
+                if(Test->TestTrue(FString(Name)+TEXT(" control exists"),Control.IsValid()))
+                    Test->TestFalse(TEXT("Unavailable weather controls do not imply live data"),Control->IsEnabled());
+            }
+            Test->TestEqual(TEXT("Opening Weather preserves planet authoring"),Planet->GetOutermost()->IsDirty(),PlanetDirtyBeforeWeather);
+            Test->TestEqual(TEXT("Opening Weather preserves ecosystem authoring"),Profile->GetOutermost()->IsDirty(),ProfileDirtyBeforeWeather);
+            Test->TestTrue(TEXT("Weather preserves the explicit ecosystem link"),Planet->AuthoringExtensions.FindRef(TEXT("CatalystEcosystem"))==FSoftObjectPath(Profile.Get()));
+            Capture(TEXT("weather"));if(!Toggle(TEXT("Climate")))return Close();Stage=7;return false;
+        }
+        if(Stage==7&&Metrics->Samples==FullSamples)return Close();
         return false;
     }
 };
