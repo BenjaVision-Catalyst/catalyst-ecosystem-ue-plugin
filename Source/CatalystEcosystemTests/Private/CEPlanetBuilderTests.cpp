@@ -18,6 +18,7 @@
 #include "Framework/Application/SlateApplication.h"
 #include "UObject/StrongObjectPtr.h"
 #include "ImageUtils.h"
+#include "ShaderCompiler.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 namespace
@@ -42,15 +43,16 @@ struct FToolkitReview : IAutomationLatentCommand
     FAutomationTestBase* Test;
     TStrongObjectPtr<UCLPlanetRecipeAsset> Planet{NewObject<UCLPlanetRecipeAsset>()};
     TStrongObjectPtr<UCEPlanetEcosystemAsset> Profile{NewObject<UCEPlanetEcosystemAsset>()};
-    struct FPreviewMetrics{int32 Samples=-1,WindVectors=0;TArray<FLinearColor> Colors;};
+    struct FPreviewMetrics{int32 Samples=-1,WindVectors=0,Segments=0,Labels=0;double MeshRadius=0;TArray<FLinearColor> Colors;};
     TSharedRef<FPreviewMetrics> Metrics=MakeShared<FPreviewMetrics>();
     TOptional<FCLPlanetBuilderProvider> OriginalProvider;
     TSharedPtr<SWindow> Window;int32 Stage=0,FullSamples=0;double Start=FPlatformTime::Seconds(),ReadyAt=0,CaptureReady=0;
     bool PlanetDirtyBeforeWeather=false,ProfileDirtyBeforeWeather=false;
     TArray<FLinearColor> WeatherNowColors,WeatherPastColors,WeatherFutureColors;
+    TArray<FColor> WeatherHeatPixels;FIntPoint WeatherHeatSize;
     explicit FToolkitReview(FAutomationTestBase* T):Test(T)
     {
-        Planet->Recipe=FCLPlanetCompiler::BasePlanet();Planet->Recipe.Name=TEXT("Ecosystem globe qualification");Planet->Recipe.RadiusMeters=100;
+        Planet->Recipe=FCLPlanetCompiler::BasePlanet();Planet->Recipe.Name=TEXT("Ecosystem globe qualification");Planet->Recipe.RadiusMeters=100;for(auto& G:Planet->Recipe.RadialGuides.Guides)if(G.Name==TEXT("Overlay"))G.NormalizedHeight=.96;
         Planet->AuthoringExtensions.Add(TEXT("CatalystEcosystem"),FSoftObjectPath(Profile.Get()));
         // Observe the real overlay contract, not implementation/debug text in the UI.
         for(const auto& Provider:FCLPlanetBuilderExtensions::Providers())if(Provider.Id==TEXT("CatalystEcosystem"))
@@ -59,7 +61,7 @@ struct FToolkitReview : IAutomationLatentCommand
             Observed.Create=[Create,View](FCLPlanetBuilderContext Context)
             {
                 const auto Publish=Context.PublishOverlay;
-                Context.PublishOverlay=[Publish,View](auto Overlay){View->Samples=Overlay?Overlay->BodyMeters.Num():-1;View->WindVectors=Overlay?Overlay->BodyVectorsMeters.Num():0;View->Colors=Overlay?Overlay->Colors:TArray<FLinearColor>();Publish(Overlay);};
+                Context.PublishOverlay=[Publish,View](auto Overlay){View->Samples=Overlay?(Overlay->MeshBodyMeters.IsEmpty()?Overlay->BodyMeters.Num():Overlay->MeshBodyMeters.Num()):-1;View->WindVectors=Overlay?Overlay->BodyVectorsMeters.Num():0;View->Segments=Overlay?Overlay->Segments.Num():0;View->Labels=Overlay?Overlay->Labels.Num():0;View->MeshRadius=Overlay&&!Overlay->MeshBodyMeters.IsEmpty()?Overlay->MeshBodyMeters[0].Length():0;View->Colors=Overlay?(Overlay->MeshColors.IsEmpty()?Overlay->Colors:Overlay->MeshColors):TArray<FLinearColor>();Publish(Overlay);};
                 return Create(MoveTemp(Context));
             };
             FCLPlanetBuilderExtensions::Register(MoveTemp(Observed));break;
@@ -68,17 +70,33 @@ struct FToolkitReview : IAutomationLatentCommand
     }
     ~FToolkitReview(){if(OriginalProvider.IsSet())FCLPlanetBuilderExtensions::Register(OriginalProvider.GetValue());}
     bool Close(){GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->CloseAllEditorsForAsset(Planet.Get());return true;}
-    bool Settled(){if(!CaptureReady){CaptureReady=FPlatformTime::Seconds();return false;}if(FPlatformTime::Seconds()-CaptureReady<.4)return false;CaptureReady=0;return true;}
+    bool Settled(){if(GShaderCompilingManager&&GShaderCompilingManager->IsCompiling())return false;if(!CaptureReady){CaptureReady=FPlatformTime::Seconds();return false;}if(FPlatformTime::Seconds()-CaptureReady<.4)return false;CaptureReady=0;return true;}
     void Capture(const TCHAR* Name)
     {
         TArray<FColor> Pixels;FIntVector Size;if(Test->TestTrue(TEXT("Actual Planet editor renders"),FSlateApplication::Get().TakeScreenshot(Window.ToSharedRef(),Pixels,Size)))
-        {TArray64<uint8> PNG;FImageUtils::PNGCompressImageArray(Size.X,Size.Y,Pixels,PNG);const auto Folder=FPaths::ProjectSavedDir()/TEXT("EcosystemQualification");IFileManager::Get().MakeDirectory(*Folder,true);FFileHelper::SaveArrayToFile(PNG,*(Folder/(FString(Name)+TEXT(".png"))));}
+        {
+            if(FString(Name)==TEXT("weather-temperature")){WeatherHeatPixels=Pixels;WeatherHeatSize=FIntPoint(Size.X,Size.Y);}
+            if(FString(Name)==TEXT("weather-no-heatmap"))
+            {
+                int32 Changed=0;if(WeatherHeatPixels.Num()==Pixels.Num()&&WeatherHeatSize==FIntPoint(Size.X,Size.Y))for(int32 Y=Size.Y/10;Y<Size.Y*9/10;++Y)for(int32 X=Size.X/2;X<Size.X;++X){const int32 I=Y*Size.X+X;const auto A=Pixels[I],B=WeatherHeatPixels[I];if(FMath::Abs(int32(A.R)-B.R)+FMath::Abs(int32(A.G)-B.G)+FMath::Abs(int32(A.B)-B.B)>60)++Changed;}
+                Test->TestTrue(TEXT("Heatmap changes actual rendered globe pixels"),Changed>10000);
+                int32 FrontChanged=0,FrontColored=0;
+                if(WeatherHeatPixels.Num()==Pixels.Num())for(int32 Y=Size.Y*48/100;Y<Size.Y*58/100;++Y)for(int32 X=Size.X*65/100;X<Size.X*75/100;++X)
+                {
+                    const int32 I=Y*Size.X+X;const auto A=Pixels[I],B=WeatherHeatPixels[I];
+                    if(FMath::Abs(int32(A.R)-B.R)+FMath::Abs(int32(A.G)-B.G)+FMath::Abs(int32(A.B)-B.B)>60)++FrontChanged;
+                    if(FMath::Max3(B.R,B.G,B.B)-FMath::Min3(B.R,B.G,B.B)>25)++FrontColored;
+                }
+                Test->TestTrue(TEXT("Heatmap covers and colours the front hemisphere, not only the rear annulus"),FrontChanged>3000&&FrontColored>3000);
+                Test->AddInfo(FString::Printf(TEXT("Rendered heatmap changes %d globe pixels"),Changed));WeatherHeatPixels.Reset();
+            }
+            TArray64<uint8> PNG;FImageUtils::PNGCompressImageArray(Size.X,Size.Y,Pixels,PNG);const auto Folder=FPaths::ProjectSavedDir()/TEXT("EcosystemQualification");IFileManager::Get().MakeDirectory(*Folder,true);FFileHelper::SaveArrayToFile(PNG,*(Folder/(FString(Name)+TEXT(".png"))));}
     }
     bool Toggle(const TCHAR* Name)
     {auto C=Check(Window.ToSharedRef(),Name);if(!Test->TestTrue(FString(Name)+TEXT(" sub-tab exists"),C.IsValid()))return false;C->ToggleCheckedState();return true;}
     virtual bool Update() override
     {
-        if(FPlatformTime::Seconds()-Start>60){Test->AddError(FString::Printf(TEXT("Timed out waiting for native Ecosystem Planet tab (stage %d)"),Stage));return Close();}
+        if(FPlatformTime::Seconds()-Start>90){Test->AddError(FString::Printf(TEXT("Timed out waiting for native Ecosystem Planet tab (stage %d)"),Stage));return Close();}
         if(Stage==0)
         {
             TArray<TSharedRef<SWindow>> Windows;FSlateApplication::Get().GetAllVisibleWindowsOrdered(Windows);
@@ -134,8 +152,19 @@ struct FToolkitReview : IAutomationLatentCommand
             Test->TestTrue(TEXT("Temperature legend is present"),Text.Contains(TEXT("40 °C red")));
             Test->TestEqual(TEXT("Weather preview preserves planet authoring"),Planet->GetOutermost()->IsDirty(),PlanetDirtyBeforeWeather);
             Test->TestEqual(TEXT("Weather preview preserves ecosystem authoring"),Profile->GetOutermost()->IsDirty(),ProfileDirtyBeforeWeather);
-            if(!Settled())return false;WeatherNowColors=Metrics->Colors;Capture(TEXT("weather-temperature"));
-            int32 Index=0;auto B=Button(Window.ToSharedRef(),TEXT("Last hour"),Index);if(!Test->TestTrue(TEXT("History is enabled"),B&&B->IsEnabled()))return Close();B->SimulateClick();Stage=7;return false;
+            if(!Settled())return false;WeatherNowColors=Metrics->Colors;
+            Test->TestTrue(TEXT("Continuous heatmap sits just behind the Overlay guide"),FMath::IsNearlyEqual(Metrics->MeshRadius,95.904,1.e-5));
+            Test->TestTrue(TEXT("Pressure contours and H/L labels are published"),Metrics->Segments>0&&Metrics->Labels>0);
+            Capture(TEXT("weather-temperature"));
+            if(!Toggle(TEXT("Heatmap")))return Close();Stage=24;return false;
+        }
+        if(Stage==24)
+        {
+            if(Metrics->MeshRadius!=0)return false;if(!Settled())return false;Capture(TEXT("weather-no-heatmap"));if(!Toggle(TEXT("Heatmap")))return Close();Stage=25;return false;
+        }
+        if(Stage==25)
+        {
+            if(Metrics->MeshRadius<=0)return false;int32 Index=0;auto B=Button(Window.ToSharedRef(),TEXT("Last hour"),Index);if(!Test->TestTrue(TEXT("History is enabled"),B&&B->IsEnabled()))return Close();B->SimulateClick();Stage=7;return false;
         }
         if(Stage==7)
         {
@@ -165,12 +194,34 @@ struct FToolkitReview : IAutomationLatentCommand
         if(Stage==11)
         {
             if(!Text.Contains(TEXT("50 mm/h violet")))return false;
-            if(!Settled())return false;Capture(TEXT("weather-rain"));if(!Toggle(TEXT("Temperature (°C)")))return Close();int32 Index=0;auto B=Button(Window.ToSharedRef(),TEXT("Advance hour"),Index);if(!B)return Close();B->SimulateClick();Stage=12;return false;
+            if(!Settled())return false;Capture(TEXT("weather-rain"));if(!Toggle(TEXT("Pressure (hPa)")))return Close();Stage=21;return false;
+        }
+        if(Stage==21)
+        {
+            if(!Text.Contains(TEXT("Pressure at common reference datum")))return false;
+            if(!Settled())return false;Capture(TEXT("weather-pressure"));if(!Toggle(TEXT("Temperature (°C)")))return Close();
+            int32 Index=0;auto B=Button(Window.ToSharedRef(),TEXT("Advance hour"),Index);if(!B)return Close();B->SimulateClick();Stage=12;return false;
         }
         if(Stage==12)
         {
             if(!Text.Contains(TEXT("Now at 02:00:00")))return false;
             Test->TestTrue(TEXT("Later accepted live view equals earlier forecast"),Metrics->Colors==WeatherFutureColors);
+            for(auto& G:Planet->Recipe.RadialGuides.Guides)if(G.Name==TEXT("Overlay"))G.NormalizedHeight=.99;
+            Planet->OnRecipeChanged.Broadcast();Stage=22;return false;
+        }
+        if(Stage==22)
+        {
+            if(!FMath::IsNearlyEqual(Metrics->MeshRadius,98.901,1.e-5))return false;
+            Test->TestTrue(TEXT("Moving Overlay preserves accepted simulation time"),Text.Contains(TEXT("Simulation time · 02:00:00")));
+            Test->TestTrue(TEXT("Moving Overlay preserves weather values"),Metrics->Colors==WeatherFutureColors);
+            if(!Settled())return false;Capture(TEXT("weather-overlay-moved"));
+            Planet->Recipe.RadialGuides.Guides.RemoveAll([](const auto& G){return G.Name==TEXT("Overlay");});Planet->OnRecipeChanged.Broadcast();Stage=23;return false;
+        }
+        if(Stage==23)
+        {
+            if(!FMath::IsNearlyEqual(Metrics->MeshRadius,99.9,1.e-5)||!Text.Contains(TEXT("Sky boundary (no Overlay guide)")))return false;
+            Test->TestTrue(TEXT("Missing Overlay falls back to sky, preserving time and data"),Text.Contains(TEXT("Simulation time · 02:00:00"))&&Metrics->Colors==WeatherFutureColors);
+            if(!Settled())return false;Capture(TEXT("weather-sky-fallback"));
             int32 Index=0;auto B=Button(Window.ToSharedRef(),TEXT("Play"),Index);if(!B)return Close();B->SimulateClick();Stage=13;return false;
         }
         if(Stage==13)
@@ -230,7 +281,7 @@ struct FAssetPickerReview : IAutomationLatentCommand
             FCEPlanetEcosystem::StaticStruct()->ExportText(B,&Created->Ecosystem,nullptr,nullptr,PPF_None,nullptr);
             Test->TestEqual(TEXT("New ecosystem starts from packaged example"),B,A);
         }
-        Planet->Recipe=FCLPlanetCompiler::BasePlanet();Planet->Recipe.RadiusMeters=100;
+        Planet->Recipe=FCLPlanetCompiler::BasePlanet();Planet->Recipe.RadiusMeters=100;for(auto& G:Planet->Recipe.RadialGuides.Guides)if(G.Name==TEXT("Overlay"))G.NormalizedHeight=.96;
         GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->OpenEditorForAsset(Planet.Get());
     }
     bool Close(){GEditor->GetSelectedObjects()->Deselect(Created.Get());GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->CloseAllEditorsForAsset(Planet.Get());return true;}

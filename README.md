@@ -10,8 +10,9 @@ footprint for every enabled biome. Habitat preferences guide placement and relax
 when needed. The Biomes map, planet-bound PCG and appearance queries use the same
 assignments and regenerate through the existing Landform region queue. The editor
 bridge builds climate-filtered Biome Core generators. Weather uses the planet
-under design and its existing globe; its Temperature, Wind and Rain overlays now run the GT-authored deterministic
-weather model. Last hour/Now/Next hour, scrubbing, pause/play and time advance
+under design and its existing globe; its floating Temperature, Wind, Rain and Pressure layers run the GT-authored deterministic
+weather model, with isobars, H/L labels and wind arrows on an editable Overlay
+radial guide (sky boundary fallback). Last hour/Now/Next hour, scrubbing, pause/play and time advance
 operate on simulation time. See [Weather](Docs/Weather.md) for scope and inputs.
 
 See [Climate and Biomes](Docs/ClimateAndBiomes.md) for model, integration and limits,

@@ -1,5 +1,47 @@
 # Weather qualification — 16 November 2026
 
+## Pressure and movable overlay shell
+
+UE 5.8.4, macOS arm64, native Metal Development editor. The current
+`planetary-weather-2` model adds common-datum pressure and derives bulk tangent
+wind from its analytic pressure gradient, with hemisphere turning and surface
+inflow/outflow. Authored local vortices remain additive. Six GT tests pass, and
+72 native point cases match all eight channels exactly (1934 scalar nodes).
+Three GT-exported packages were read back with TonelReader: all 22 class/method
+definitions match the live image. Clean-image loading remains unqualified.
+
+The closed 2562-vertex globe has no longitude/pole seam. Checks cover closed
+isobars, tangent arrows, H/L labels, heatmap placement, and guide-bound terrain
+invalidation. Real Slate controls exercise all four layers, history/forecast,
+Play/Pause, guide movement without clock/value changes, and removal falling
+back to the outer sky boundary. Screenshot comparison verifies rendered heatmap
+pixels, supplemented by visual inspection of the native rendering.
+
+The focused native run includes all 16 Ecosystem tests and six supported radial
+guide tests: 21 clean passes, one pass with warning, zero failures/skips.
+A 2048-point model evaluation took 15.603 ms and its bake 5.899 ms on this host;
+the globe geometry/guide checks took 0.755 ms (one synthetic workload, not a
+frame-time guarantee). Heatmap on/off changed 1,569,869 globe pixels; the front
+hemisphere also passes coverage and colour checks. One expected warning belongs to the existing missing-art guard.
+The broader `RadialGuides.AuthoringAndResize` test has a separate existing
+schema-1 / algorithm-1 import rejection in the unchanged compiler/importer. Its
+fixture and compatibility contract remain intact; that test is excluded from
+this focused passing run. See Landform `Docs/PlanetBuilderOverlays.md`.
+
+The heatmap is a retained native Dynamic Mesh, with no per-frame mesh rebuild.
+Animated weather requests coalesce to at most 5 Hz; paused views reuse samples.
+Moving an unbound Overlay guide changes presentation only; terrain or weather
+input changes reset the session. Physical pressure remains a reference-datum
+field, independent of display altitude. This is not a vertical atmosphere solver.
+
+Evidence: ThatGame58 `Saved/PressureOverlayQualification/`,
+`Saved/EcosystemQualification/weather-*.png`, and
+`Saved/Logs/PressureOverlayQualification.log`; workspace source parity and
+released/restored native lease markers under
+`recovery/pressure-overlay-20261116/`. The live GT image stayed open.
+
+## Initial weather slice (historical)
+
 Initial target: UE 5.8.4, macOS arm64, Development editor. Native Metal rendering,
 not a null-RHI UI inspection. The same immutable model is interpreted in live GT
 and native Unreal. All shared source was compiled/exported through GT MCP into
@@ -51,5 +93,5 @@ workspace planetary design for full acceptance criteria.
 
 Production Runtime/GemStone durability, history across terrain edits, multiplayer,
 near-player weather and curvature-rendered precipitation/lightning, point probes,
-and detailed tornado effects/commands remain unqualified. The globe currently
-shows sampled colour markers and arrows, not a continuous weather material.
+and detailed tornado effects/commands remain unqualified. The initial marker display is superseded by the continuous movable weather
+shell above. Near-player weather rendering remains a separate production gate.

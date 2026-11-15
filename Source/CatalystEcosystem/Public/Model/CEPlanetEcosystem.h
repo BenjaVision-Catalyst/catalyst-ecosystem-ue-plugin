@@ -66,6 +66,8 @@ struct CATALYSTECOSYSTEM_API FCEWeatherSettings
 {
     GENERATED_BODY()
     UPROPERTY(EditAnywhere, Category="Weather") int32 Seed=1729;
+    UPROPERTY(EditAnywhere, Category="Weather", meta=(ClampMin="1",ClampMax="10000",DisplayName="Reference pressure (hPa)")) double ReferencePressureHpa=1013.25;
+    UPROPERTY(EditAnywhere, Category="Weather", meta=(ClampMin="0.01",ClampMax="5",ToolTip="Wind response to pressure gradients normalized to the planet reference atmosphere.")) double WindResponse=.6;
     UPROPERTY(EditAnywhere, Category="Weather", meta=(ClampMin="0",ClampMax="3")) double RegionalStrength=1;
     UPROPERTY(EditAnywhere, Category="Weather", meta=(ClampMin="0",ClampMax="40",Units="m/s")) double PrevailingWind=6;
     UPROPERTY(EditAnywhere, Category="Weather", meta=(ClampMin="600",ClampMax="604800",Units="s")) double CirculationSeconds=21600;

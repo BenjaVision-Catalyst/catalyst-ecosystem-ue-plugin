@@ -2,7 +2,7 @@
 #include "CoreMinimal.h"
 #include "Model/CEPlanetEcosystem.h"
 #include "Fields/CSFieldProgram.h"
-struct FCEWeatherSample { double TemperatureC=0,RainMmHour=0,Dust=0,Cloud=0;FVector Wind=FVector::ZeroVector; };
+struct FCEWeatherSample { double TemperatureC=0,RainMmHour=0,Dust=0,Cloud=0,PressureHpa=0;FVector Wind=FVector::ZeroVector; };
 /** Immutable baked planet inputs + GT-authored program; no domain solver or clock in this adapter. */
 class CATALYSTECOSYSTEM_API FCEPlanetWeather
 {

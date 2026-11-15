@@ -12,13 +12,13 @@ TArray<TArray<int64>> Rows(const TArray<TSharedPtr<FJsonValue>>& A){TArray<TArra
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCEWeatherVectors,"Catalyst.Ecosystem.Weather.GTNativeParity",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
 bool FCEWeatherVectors::RunTest(const FString&)
 {
-    const FString Folder=IPluginManager::Get().FindPlugin(TEXT("CatalystEcosystem"))->GetBaseDir()/TEXT("Resources/Weather/Conformance");FString ProgramJson,Json,Error;
+    const FString Folder=IPluginManager::Get().FindPlugin(TEXT("CatalystEcosystem"))->GetBaseDir()/TEXT("Resources/Weather/Conformance/planetary-weather-2");FString ProgramJson,Json,Error;
     if(!TestTrue(TEXT("GT generated program exists"),FFileHelper::LoadFileToString(ProgramJson,*(Folder/TEXT("program.json"))))||!TestTrue(TEXT("GT vectors exist"),FFileHelper::LoadFileToString(Json,*(Folder/TEXT("vectors.json")))))return false;
     FCSFieldProgram Invalid;
     TestFalse(TEXT("Missing model arrays reject"),Invalid.Load(TEXT("{\"profile\":\"analytic-field-1\"}"),Error));
     TestFalse(TEXT("Fractional opcode rejects"),Invalid.Load(TEXT("{\"profile\":\"analytic-field-1\",\"nodes\":[[0.5,1]],\"outputs\":[0],\"sine\":[]}"),Error));
     FCSFieldProgram Program;if(!TestTrue(TEXT("GT program validates"),Program.Load(ProgramJson,Error)))return false;
-    TSharedPtr<FJsonObject> J;if(!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Json),J))return false;
+    TSharedPtr<FJsonObject> J;if(!TestTrue(TEXT("GT vectors are canonical JSON"),FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Json),J)))return false;
     const auto Inputs=Rows(J->GetArrayField(TEXT("inputs")));FCSFieldContext C;C.Environment=Inputs;
     for(const auto& V:J->GetArrayField(TEXT("curves")))C.Curves.Add(Rows(V->AsArray()));
     TestTrue(TEXT("Cubic arc-length spline agrees exactly with GT"),FCSFieldProgram::BuildCurve(Rows(J->GetArrayField(TEXT("curveControlPoints"))))==C.Curves[0]);
@@ -41,7 +41,7 @@ bool FCEWeatherPlanet::RunTest(const FString&)
     FCEPlanetWeather Field;FString Error;if(!TestTrue(TEXT("Explicit planet bake"),Field.Initialize(M,P,N,1000,17,Error))){AddError(Error);return false;}
     TArray<FCEWeatherSample> A,B,Future;const double Start=FPlatformTime::Seconds();if(!TestTrue(TEXT("Now"),Field.Evaluate(3600,A,Error))){AddError(Error);return false;}const double Millis=(FPlatformTime::Seconds()-Start)*1000;
     if(!TestTrue(TEXT("Prediction"),Field.Evaluate(7200,Future,Error))||!TestTrue(TEXT("Now after forecast"),Field.Evaluate(3600,B,Error)))return false;
-    double Delta=0;for(int I=0;I<Count;++I){TestEqual(TEXT("Repeatable temperature"),A[I].TemperatureC,B[I].TemperatureC);TestEqual(TEXT("Repeatable rain"),A[I].RainMmHour,B[I].RainMmHour);TestTrue(TEXT("Repeatable wind"),A[I].Wind==B[I].Wind);TestTrue(TEXT("Nonnegative rain"),A[I].RainMmHour>=0);Delta+=FMath::Abs(A[I].TemperatureC-Future[I].TemperatureC);}
+    double Delta=0;for(int I=0;I<Count;++I){TestEqual(TEXT("Repeatable temperature"),A[I].TemperatureC,B[I].TemperatureC);TestEqual(TEXT("Repeatable pressure"),A[I].PressureHpa,B[I].PressureHpa);TestEqual(TEXT("Repeatable rain"),A[I].RainMmHour,B[I].RainMmHour);TestTrue(TEXT("Repeatable wind"),A[I].Wind==B[I].Wind);TestTrue(TEXT("Nonnegative rain"),A[I].RainMmHour>=0);Delta+=FMath::Abs(A[I].TemperatureC-Future[I].TemperatureC);}
     TestTrue(TEXT("Weather evolves over the hour"),Delta>1);AddInfo(FString::Printf(TEXT("2048-point evaluation %.3f ms; bake %.3f ms"),Millis,Field.LastBakeSeconds*1000));
     M.Weather.Seed++;FCEPlanetWeather Other;TestTrue(TEXT("Other seed initializes"),Other.Initialize(M,P,N,1000,17,Error));TestTrue(TEXT("Other seed evaluates"),Other.Evaluate(3600,B,Error));Delta=0;for(int I=0;I<Count;++I)Delta+=FMath::Abs(A[I].RainMmHour-B[I].RainMmHour);TestTrue(TEXT("Seed changes weather"),Delta>0);
     return true;
