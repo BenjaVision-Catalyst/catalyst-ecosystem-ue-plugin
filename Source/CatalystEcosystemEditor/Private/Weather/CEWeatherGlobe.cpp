@@ -48,29 +48,59 @@ TSharedPtr<const FCLPlanetBuilderOverlay> CEBuildWeatherGlobe(const FCEWeatherGl
     if(!Pressure&&!Wind)return O;
     double Min=1.e10,Max=-1.e10;for(const auto& S:Samples){Min=FMath::Min(Min,S.PressureHpa);Max=FMath::Max(Max,S.PressureHpa);}
     const double First=FMath::CeilToDouble(Min/Interval)*Interval;
-    TArray<FVector> ArrowSites;
-    for(int32 Level=0;Level<64&&First+Level*Interval<=Max;++Level)
+    int32 EdgeBudget=16384,HeadBudget=2048;
+    for(int32 Level=0;Level<64&&First+Level*Interval<=Max&&EdgeBudget>0;++Level)
     {
         const double P=First+Level*Interval;
-        for(int32 I=0;I<M.Indices.Num();I+=3)
+        struct FNode{FVector Direction,Wind;TArray<int32> Links;};
+        struct FLink{int32 A,B;bool Used=false;};
+        TArray<FNode> Nodes;TArray<FLink> Links;TMap<uint64,int32> NodeIds;TSet<uint64> LinkIds;
+        for(int32 I=0;I<M.Indices.Num()&&EdgeBudget>0;I+=3)
         {
-            FVector Hits[2],Winds[2];int32 Count=0;
+            int32 Hits[3],Count=0;
             for(int32 E=0;E<3;++E)
             {
                 int32 A=M.Indices[I+E],B=M.Indices[I+(E+1)%3];if(A>B)Swap(A,B);const double X=Samples[A].PressureHpa,Y=Samples[B].PressureHpa;
-                if((X<P&&Y>=P)||(Y<P&&X>=P))
-                {
-                    const double F=(P-X)/(Y-X);if(Count<2){Hits[Count]=FMath::Lerp(M.Directions[A],M.Directions[B],F).GetSafeNormal();Winds[Count]=FMath::Lerp(Samples[A].Wind,Samples[B].Wind,F);++Count;}
-                }
+                if(!((X<P&&Y>=P)||(Y<P&&X>=P)))continue;
+                const double F=(P-X)/(Y-X);
+                // An exact vertex crossing has one identity across all incident triangles.
+                const uint64 Key=X==P?(uint64(1)<<63)|uint32(A):(Y==P?(uint64(1)<<63)|uint32(B):(uint64(A)<<32)|uint32(B));
+                int32 N;
+                if(const auto* Existing=NodeIds.Find(Key))N=*Existing;
+                else{N=Nodes.Num();NodeIds.Add(Key,N);FNode Node;Node.Direction=FMath::Lerp(M.Directions[A],M.Directions[B],F).GetSafeNormal();Node.Wind=FMath::Lerp(Samples[A].Wind,Samples[B].Wind,F);Nodes.Add(MoveTemp(Node));}
+                bool Duplicate=false;for(int32 H=0;H<Count;++H)Duplicate|=Hits[H]==N;if(!Duplicate)Hits[Count++]=N;
             }
-            if(Count!=2||(Hits[0]-Hits[1]).IsNearlyZero(1.e-12))continue;
-            if(Pressure&&O->Segments.Num()<16384)O->Segments.Add({Hits[0]*Radius,Hits[1]*Radius,FLinearColor(.92,.96,1),1.25f});
-            if(Wind&&O->BodyMeters.Num()<256&&I%12==0)
+            if(Count!=2||(Nodes[Hits[0]].Direction-Nodes[Hits[1]].Direction).IsNearlyZero(1.e-12))continue;
+            const uint64 Key=(uint64(FMath::Min(Hits[0],Hits[1]))<<32)|uint32(FMath::Max(Hits[0],Hits[1]));if(LinkIds.Contains(Key))continue;LinkIds.Add(Key);
+            const int32 Link=Links.Add({Hits[0],Hits[1]});Nodes[Hits[0]].Links.Add(Link);Nodes[Hits[1]].Links.Add(Link);--EdgeBudget;
+            if(Pressure)O->Segments.Add({Nodes[Hits[0]].Direction*Radius,Nodes[Hits[1]].Direction*Radius,FLinearColor(.92,.96,1),1.25f});
+        }
+        if(!Wind)continue;
+        int32 Loop=0;
+        for(int32 Seed=0;Seed<Links.Num()&&O->Flows.Num()<256&&HeadBudget>0;++Seed)
+        {
+            if(Links[Seed].Used)continue;
+            TArray<int32> Path;const int32 Start=Links[Seed].A;Path.Add(Start);int32 Current=Start,Edge=Seed;
+            while(Edge!=INDEX_NONE&&!Links[Edge].Used)
             {
-                const FVector D=(Hits[0]+Hits[1]).GetSafeNormal();const FVector W=FVector::VectorPlaneProject((Winds[0]+Winds[1])*.5,D);if(W.Length()<.25)continue;
-                bool Close=false;for(const auto& Site:ArrowSites)if(FVector::DotProduct(D,Site)>.985){Close=true;break;}if(Close)continue;
-                ArrowSites.Add(D);O->BodyMeters.Add(D*Radius);O->Colors.Add(FLinearColor::White);O->BodyVectorsMeters.Add(W.GetSafeNormal()*Radius*FMath::Clamp(W.Length()*.002,.018,.06));
+                auto& Link=Links[Edge];Link.Used=true;Current=Link.A==Current?Link.B:Link.A;Path.Add(Current);if(Current==Start)break;
+                Edge=INDEX_NONE;for(int32 Candidate:Nodes[Current].Links)if(!Links[Candidate].Used){Edge=Candidate;break;}
             }
+            if(Path.Num()<4||Path.Last()!=Start)continue;
+            FCLPlanetBuilderOverlayFlow Flow;Flow.Key=(uint64(FMath::RoundToInt64(P/Reference*1000000))<<16)|uint16(Loop++);
+            for(int32 N:Path)Flow.BodyMeters.Add(Nodes[N].Direction*Radius);
+            if(!Flow.BuildArcLengths())continue;
+            double Strength=0,Along=0;
+            for(int32 I=1;I<Path.Num();++I)
+            {
+                const auto& A=Nodes[Path[I-1]];const auto& B=Nodes[Path[I]];const FVector Mid=(A.Direction+B.Direction).GetSafeNormal();
+                const FVector W=FVector::VectorPlaneProject((A.Wind+B.Wind)*.5,Mid),T=FVector::VectorPlaneProject(B.Direction-A.Direction,Mid).GetSafeNormal();
+                const double Length=Flow.ArcMeters[I]-Flow.ArcMeters[I-1];Strength+=W.Length()*Length;Along+=FVector::DotProduct(W,T)*Length;
+            }
+            // A shared phase and representative speed preserve equal spacing all around a loop.
+            Flow.SpeedMetersPerSecond=Radius*.002*Strength/Flow.LengthMeters()*(Along<0?-1:1);
+            Flow.ArrowCount=FMath::Min(HeadBudget,FMath::Clamp(FMath::RoundToInt(Flow.LengthMeters()/(Radius*.18)),1,128));HeadBudget-=Flow.ArrowCount;
+            O->Flows.Add(MoveTemp(Flow));
         }
     }
     if(Pressure)
@@ -88,7 +118,7 @@ TSharedPtr<const FCLPlanetBuilderOverlay> CEBuildWeatherGlobe(const FCEWeatherGl
         for(const auto& C:Candidates)
         {
             const FVector D=M.Directions[C.Index];bool Close=false;for(const auto& Site:Sites)if(FVector::DotProduct(D,Site)>.9){Close=true;break;}if(Close)continue;
-            Sites.Add(D);O->Labels.Add({D*Radius,FString::Printf(TEXT("%s %.0f"),C.High?TEXT("H"):TEXT("L"),Samples[C.Index].PressureHpa),C.High?FLinearColor(1,.7,.02):FLinearColor(.05,.85,1)});if(O->Labels.Num()==16)break;
+            Sites.Add(D);O->Labels.Add({D*Radius,FString(C.High?TEXT("H"):TEXT("L")),C.High?FLinearColor(1,.7,.02):FLinearColor(.05,.85,1)});if(O->Labels.Num()==16)break;
         }
     }
     return O;

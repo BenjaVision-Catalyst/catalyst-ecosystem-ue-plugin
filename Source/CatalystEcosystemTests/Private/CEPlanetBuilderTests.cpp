@@ -52,13 +52,13 @@ struct FToolkitReview : IAutomationLatentCommand
     FAutomationTestBase* Test;
     TStrongObjectPtr<UCLPlanetRecipeAsset> Planet{NewObject<UCLPlanetRecipeAsset>()};
     TStrongObjectPtr<UCEPlanetEcosystemAsset> Profile{NewObject<UCEPlanetEcosystemAsset>()};
-    struct FPreviewMetrics{int32 Samples=-1,WindVectors=0,Segments=0,Labels=0;double MeshRadius=0;TArray<FLinearColor> Colors;};
+    struct FPreviewMetrics{int32 Samples=-1,FlowPaths=0,Arrowheads=0,Segments=0,Labels=0;double MeshRadius=0;bool PlainLabels=true,FreezeWeather=false;TArray<FLinearColor> Colors;TSharedPtr<const FCLPlanetBuilderOverlay> LastOverlay,FrozenOverlay;};
     TSharedRef<FPreviewMetrics> Metrics=MakeShared<FPreviewMetrics>();
     TOptional<FCLPlanetBuilderProvider> OriginalProvider;
     TSharedPtr<SWindow> Window;int32 Stage=0,FullSamples=0;double Start=FPlatformTime::Seconds(),ReadyAt=0,CaptureReady=0;
     bool PlanetDirtyBeforeWeather=false,ProfileDirtyBeforeWeather=false;
-    TArray<FLinearColor> WeatherNowColors,WeatherPastColors,WeatherFutureColors;
-    TArray<FColor> WeatherHeatPixels;FIntPoint WeatherHeatSize;
+    TArray<FLinearColor> WeatherNowColors;
+    TArray<FColor> FrozenFlowPixels;FIntPoint FrozenFlowSize;
     explicit FToolkitReview(FAutomationTestBase* T):Test(T)
     {
         Planet->Recipe=FCLPlanetCompiler::BasePlanet();Planet->Recipe.Name=TEXT("Ecosystem globe qualification");Planet->Recipe.RadiusMeters=100;for(auto& G:Planet->Recipe.RadialGuides.Guides)if(G.Name==TEXT("Overlay"))G.NormalizedHeight=.96;
@@ -70,7 +70,16 @@ struct FToolkitReview : IAutomationLatentCommand
             Observed.Create=[Create,View](FCLPlanetBuilderContext Context)
             {
                 const auto Publish=Context.PublishOverlay;
-                Context.PublishOverlay=[Publish,View](auto Overlay){View->Samples=Overlay?(Overlay->MeshBodyMeters.IsEmpty()?Overlay->BodyMeters.Num():Overlay->MeshBodyMeters.Num()):-1;View->WindVectors=Overlay?Overlay->BodyVectorsMeters.Num():0;View->Segments=Overlay?Overlay->Segments.Num():0;View->Labels=Overlay?Overlay->Labels.Num():0;View->MeshRadius=Overlay&&!Overlay->MeshBodyMeters.IsEmpty()?Overlay->MeshBodyMeters[0].Length():0;View->Colors=Overlay?(Overlay->MeshColors.IsEmpty()?Overlay->Colors:Overlay->MeshColors):TArray<FLinearColor>();Publish(Overlay);};
+                Context.PublishOverlay=[Publish,View](auto Overlay)
+                {
+                    if(View->FreezeWeather&&Overlay&&!Overlay->Flows.IsEmpty()){Publish(View->FrozenOverlay);return;}
+                    View->Samples=Overlay?(Overlay->MeshBodyMeters.IsEmpty()?Overlay->BodyMeters.Num():Overlay->MeshBodyMeters.Num()):-1;
+                    View->FlowPaths=Overlay?Overlay->Flows.Num():0;View->Arrowheads=0;View->PlainLabels=true;
+                    if(Overlay){for(const auto& F:Overlay->Flows)View->Arrowheads+=F.ArrowCount;for(const auto& L:Overlay->Labels)View->PlainLabels&=L.Text==TEXT("H")||L.Text==TEXT("L");}
+                    View->Segments=Overlay?Overlay->Segments.Num():0;View->Labels=Overlay?Overlay->Labels.Num():0;
+                    View->MeshRadius=Overlay&&!Overlay->MeshBodyMeters.IsEmpty()?Overlay->MeshBodyMeters[0].Length():0;
+                    View->Colors=Overlay?(Overlay->MeshColors.IsEmpty()?Overlay->Colors:Overlay->MeshColors):TArray<FLinearColor>();View->LastOverlay=Overlay;Publish(Overlay);
+                };
                 return Create(MoveTemp(Context));
             };
             FCLPlanetBuilderExtensions::Register(MoveTemp(Observed));break;
@@ -97,20 +106,18 @@ struct FToolkitReview : IAutomationLatentCommand
     {
         TArray<FColor> Pixels;FIntVector Size;if(Test->TestTrue(TEXT("Actual Planet editor renders"),FSlateApplication::Get().TakeScreenshot(Window.ToSharedRef(),Pixels,Size)))
         {
-            if(FString(Name)==TEXT("weather-temperature")){WeatherHeatPixels=Pixels;WeatherHeatSize=FIntPoint(Size.X,Size.Y);}
-            if(FString(Name)==TEXT("weather-no-heatmap"))
+            if(FString(Name)==TEXT("weather-flow-a")){FrozenFlowPixels=Pixels;FrozenFlowSize=FIntPoint(Size.X,Size.Y);}
+            if(FString(Name)==TEXT("weather-flow-b"))
             {
-                int32 Changed=0;if(WeatherHeatPixels.Num()==Pixels.Num()&&WeatherHeatSize==FIntPoint(Size.X,Size.Y))for(int32 Y=Size.Y/10;Y<Size.Y*9/10;++Y)for(int32 X=Size.X/2;X<Size.X;++X){const int32 I=Y*Size.X+X;const auto A=Pixels[I],B=WeatherHeatPixels[I];if(FMath::Abs(int32(A.R)-B.R)+FMath::Abs(int32(A.G)-B.G)+FMath::Abs(int32(A.B)-B.B)>60)++Changed;}
-                Test->TestTrue(TEXT("Heatmap changes actual rendered globe pixels"),Changed>10000);
-                int32 FrontChanged=0,FrontColored=0;
-                if(WeatherHeatPixels.Num()==Pixels.Num())for(int32 Y=Size.Y*48/100;Y<Size.Y*58/100;++Y)for(int32 X=Size.X*65/100;X<Size.X*75/100;++X)
-                {
-                    const int32 I=Y*Size.X+X;const auto A=Pixels[I],B=WeatherHeatPixels[I];
-                    if(FMath::Abs(int32(A.R)-B.R)+FMath::Abs(int32(A.G)-B.G)+FMath::Abs(int32(A.B)-B.B)>60)++FrontChanged;
-                    if(FMath::Max3(B.R,B.G,B.B)-FMath::Min3(B.R,B.G,B.B)>25)++FrontColored;
-                }
-                Test->TestTrue(TEXT("Heatmap covers and colours the front hemisphere, not only the rear annulus"),FrontChanged>3000&&FrontColored>3000);
-                Test->AddInfo(FString::Printf(TEXT("Rendered heatmap changes %d globe pixels"),Changed));WeatherHeatPixels.Reset();
+                int32 Changed=0;if(FrozenFlowPixels.Num()==Pixels.Num()&&FrozenFlowSize==FIntPoint(Size.X,Size.Y))
+                    for(int32 Y=Size.Y/10;Y<Size.Y*9/10;++Y)for(int32 X=Size.X/2;X<Size.X;++X)
+                    {
+                        const int32 I=Y*Size.X+X;const auto A=FrozenFlowPixels[I],B=Pixels[I];
+                        const bool WhiteA=A.R>210&&A.G>210&&A.B>210,WhiteB=B.R>210&&B.G>210&&B.B>210;
+                        if(WhiteA!=WhiteB&&FMath::Abs(int32(A.R)-B.R)+FMath::Abs(int32(A.G)-B.G)+FMath::Abs(int32(A.B)-B.B)>40)++Changed;
+                    }
+                Test->TestTrue(TEXT("Rendered arrowheads march with the weather payload held fixed"),Changed>50);
+                Test->AddInfo(FString::Printf(TEXT("Marching heads change %d white globe pixels with fixed fields"),Changed));FrozenFlowPixels.Reset();
             }
             TArray64<uint8> PNG;FImageUtils::PNGCompressImageArray(Size.X,Size.Y,Pixels,PNG);const auto Folder=FPaths::ProjectSavedDir()/TEXT("EcosystemQualification");IFileManager::Get().MakeDirectory(*Folder,true);FFileHelper::SaveArrayToFile(PNG,*(Folder/(FString(Name)+TEXT(".png"))));}
     }
@@ -169,90 +176,46 @@ struct FToolkitReview : IAutomationLatentCommand
         }
         if(Stage==6)
         {
-            if(Metrics->Samples<=0||!Text.Contains(TEXT("Planet range")))return false;
-            Test->TestTrue(TEXT("Weather is bound to the designed planet"),Text.Contains(Planet->Recipe.Name));
-            Test->TestTrue(TEXT("Temperature legend is present"),Text.Contains(TEXT("40 °C red")));
+            if(Metrics->Samples<=0||Metrics->FlowPaths<=0)return false;
+            Test->TestFalse(TEXT("Weather removes layer buttons, toggles, readouts and timeline controls"),
+                Check(Window.ToSharedRef(),TEXT("Temperature (°C)")).IsValid()||Check(Window.ToSharedRef(),TEXT("Pressure (hPa)")).IsValid()||
+                Check(Window.ToSharedRef(),TEXT("Isobars")).IsValid()||Check(Window.ToSharedRef(),TEXT("Wind arrows")).IsValid()||Check(Window.ToSharedRef(),TEXT("Heatmap")).IsValid()||
+                Text.Contains(TEXT("Simulation time"))||Text.Contains(TEXT("Planet range"))||Text.Contains(TEXT("Last hour"))||Text.Contains(TEXT("Advance hour")));
+            Test->TestTrue(TEXT("Plain H/L labels and complete contour flow are published"),Metrics->PlainLabels&&Metrics->Labels>0&&Metrics->Segments>0&&Metrics->Arrowheads>0);
             Test->TestEqual(TEXT("Weather preview preserves planet authoring"),Planet->GetOutermost()->IsDirty(),PlanetDirtyBeforeWeather);
             Test->TestEqual(TEXT("Weather preview preserves ecosystem authoring"),Profile->GetOutermost()->IsDirty(),ProfileDirtyBeforeWeather);
-            if(!Settled())return false;WeatherNowColors=Metrics->Colors;
-            Test->TestTrue(TEXT("Continuous heatmap sits just behind the Overlay guide"),FMath::IsNearlyEqual(Metrics->MeshRadius,95.904,1.e-5));
-            Test->TestTrue(TEXT("Pressure contours and H/L labels are published"),Metrics->Segments>0&&Metrics->Labels>0);
-            Capture(TEXT("weather-temperature"));
-            if(!Toggle(TEXT("Heatmap")))return Close();Stage=24;return false;
-        }
-        if(Stage==24)
-        {
-            if(Metrics->MeshRadius!=0)return false;if(!Settled())return false;Capture(TEXT("weather-no-heatmap"));if(!Toggle(TEXT("Heatmap")))return Close();Stage=25;return false;
-        }
-        if(Stage==25)
-        {
-            if(Metrics->MeshRadius<=0)return false;int32 Index=0;auto B=Button(Window.ToSharedRef(),TEXT("Last hour"),Index);if(!Test->TestTrue(TEXT("History is enabled"),B&&B->IsEnabled()))return Close();B->SimulateClick();Stage=7;return false;
+            if(!Settled())return false;WeatherNowColors=Metrics->Colors;ReadyAt=FPlatformTime::Seconds();Capture(TEXT("weather-running"));Stage=7;return false;
         }
         if(Stage==7)
         {
-            if(!Text.Contains(TEXT("History at 00:00:00")))return false;
-            if(!Settled())return false;WeatherPastColors=Metrics->Colors;Test->TestTrue(TEXT("History contains different weather"),WeatherPastColors!=WeatherNowColors);Capture(TEXT("weather-history"));
-            int32 Index=0;auto B=Button(Window.ToSharedRef(),TEXT("Next hour"),Index);if(!B)return Close();B->SimulateClick();Stage=8;return false;
+            if(FPlatformTime::Seconds()-ReadyAt<1||Metrics->Colors==WeatherNowColors)return false;
+            Test->TestTrue(TEXT("Weather automatically advances without a Play action"),Metrics->Colors!=WeatherNowColors);
+            Capture(TEXT("weather-running-later"));Metrics->FrozenOverlay=Metrics->LastOverlay;Metrics->FreezeWeather=true;ReadyAt=FPlatformTime::Seconds();Stage=8;return false;
         }
         if(Stage==8)
         {
-            if(!Text.Contains(TEXT("Forecast at 02:00:00")))return false;
-            if(!Settled())return false;Test->TestTrue(TEXT("Forecast contains different weather"),Metrics->Colors!=WeatherPastColors);
-            Test->TestTrue(TEXT("Forecast does not advance live time"),Text.Contains(TEXT("Simulation time · 01:00:00")));Capture(TEXT("weather-forecast"));
-            WeatherFutureColors=Metrics->Colors;int32 Index=0;auto B=Button(Window.ToSharedRef(),TEXT("Now"),Index);if(!B)return Close();B->SimulateClick();Stage=9;return false;
+            if(FPlatformTime::Seconds()-ReadyAt<.5||!Settled())return false;
+            Capture(TEXT("weather-flow-a"));ReadyAt=FPlatformTime::Seconds();Stage=9;return false;
         }
         if(Stage==9)
         {
-            if(!Text.Contains(TEXT("Now at 01:00:00")))return false;
-            Test->TestTrue(TEXT("Now is reproduced after scrubbing"),Metrics->Colors==WeatherNowColors);
-            if(!Toggle(TEXT("Wind (m/s)")))return Close();Stage=10;return false;
+            if(FPlatformTime::Seconds()-ReadyAt<.6)return false;
+            Capture(TEXT("weather-flow-b"));Metrics->FreezeWeather=false;Metrics->FrozenOverlay.Reset();
+            for(auto& G:Planet->Recipe.RadialGuides.Guides)if(G.Name==TEXT("Overlay"))G.NormalizedHeight=.99;
+            Planet->OnRecipeChanged.Broadcast();Stage=10;return false;
         }
         if(Stage==10)
         {
-            if(!Text.Contains(TEXT("60 m/s yellow")))return false;
-            if(!Settled())return false;Test->TestTrue(TEXT("Wind direction vectors are published"),Metrics->WindVectors>0);Test->TestTrue(TEXT("Wind uses its own field"),Metrics->Colors!=WeatherNowColors);Capture(TEXT("weather-wind"));
-            if(!Toggle(TEXT("Rain (mm/h)")))return Close();Stage=11;return false;
+            if(!FMath::IsNearlyEqual(Metrics->MeshRadius,98.901,1.e-5)||!Settled())return false;
+            Capture(TEXT("weather-overlay-moved"));Planet->Recipe.RadialGuides.Guides.RemoveAll([](const auto& G){return G.Name==TEXT("Overlay");});Planet->OnRecipeChanged.Broadcast();Stage=11;return false;
         }
         if(Stage==11)
         {
-            if(!Text.Contains(TEXT("50 mm/h violet")))return false;
-            if(!Settled())return false;Capture(TEXT("weather-rain"));if(!Toggle(TEXT("Pressure (hPa)")))return Close();Stage=21;return false;
+            if(!FMath::IsNearlyEqual(Metrics->MeshRadius,99.9,1.e-5)||!Settled())return false;
+            Test->TestTrue(TEXT("Moving/removing Overlay retains contour animation and plain labels"),Metrics->FlowPaths>0&&Metrics->PlainLabels);
+            Capture(TEXT("weather-sky-fallback"));if(!Toggle(TEXT("Climate")))return Close();Stage=12;return false;
         }
-        if(Stage==21)
-        {
-            if(!Text.Contains(TEXT("Pressure at common reference datum")))return false;
-            if(!Settled())return false;Capture(TEXT("weather-pressure"));if(!Toggle(TEXT("Temperature (°C)")))return Close();
-            int32 Index=0;auto B=Button(Window.ToSharedRef(),TEXT("Advance hour"),Index);if(!B)return Close();B->SimulateClick();Stage=12;return false;
-        }
-        if(Stage==12)
-        {
-            if(!Text.Contains(TEXT("Now at 02:00:00")))return false;
-            Test->TestTrue(TEXT("Later accepted live view equals earlier forecast"),Metrics->Colors==WeatherFutureColors);
-            for(auto& G:Planet->Recipe.RadialGuides.Guides)if(G.Name==TEXT("Overlay"))G.NormalizedHeight=.99;
-            Planet->OnRecipeChanged.Broadcast();Stage=22;return false;
-        }
-        if(Stage==22)
-        {
-            if(!FMath::IsNearlyEqual(Metrics->MeshRadius,98.901,1.e-5))return false;
-            Test->TestTrue(TEXT("Moving Overlay preserves accepted simulation time"),Text.Contains(TEXT("Simulation time · 02:00:00")));
-            Test->TestTrue(TEXT("Moving Overlay preserves weather values"),Metrics->Colors==WeatherFutureColors);
-            if(!Settled())return false;Capture(TEXT("weather-overlay-moved"));
-            Planet->Recipe.RadialGuides.Guides.RemoveAll([](const auto& G){return G.Name==TEXT("Overlay");});Planet->OnRecipeChanged.Broadcast();Stage=23;return false;
-        }
-        if(Stage==23)
-        {
-            if(!FMath::IsNearlyEqual(Metrics->MeshRadius,99.9,1.e-5)||!Text.Contains(TEXT("Sky boundary (no Overlay guide)")))return false;
-            Test->TestTrue(TEXT("Missing Overlay falls back to sky, preserving time and data"),Text.Contains(TEXT("Simulation time · 02:00:00"))&&Metrics->Colors==WeatherFutureColors);
-            if(!Settled())return false;Capture(TEXT("weather-sky-fallback"));
-            int32 Index=0;auto B=Button(Window.ToSharedRef(),TEXT("Play"),Index);if(!B)return Close();B->SimulateClick();Stage=13;return false;
-        }
-        if(Stage==13)
-        {
-            if(Text.Contains(TEXT("Simulation time · 02:00:00")))return false;
-            int32 Index=0;auto B=Button(Window.ToSharedRef(),TEXT("Pause"),Index);if(!Test->TestTrue(TEXT("Play advances and offers Pause"),B.IsValid()))return Close();B->SimulateClick();
-            if(!Toggle(TEXT("Climate")))return Close();Stage=14;return false;
-        }
-        if(Stage==14&&Metrics->Samples==FullSamples)return Close();
+        if(Stage==12&&Metrics->Samples==FullSamples)return Close();
         return false;
     }
 };

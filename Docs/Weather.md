@@ -1,22 +1,30 @@
 # Planetary weather preview
 
-Open a planet recipe, choose **Ecosystem → Weather**. The existing designed globe
-shows Temperature (°C), Wind (m/s), Rain (mm/hour) or Pressure (hPa).
-A continuous translucent heatmap sits just behind pressure contours, H/L labels
-and wind arrows anchored along the contours. Isobars, arrows and heatmap can be
-shown independently. The shell uses 18% opacity with saturated colour ramps;
-pressure runs blue through green to amber, avoiding a grey midpoint.
-Legends stay fixed while scrubbing. Last hour/Now/Next hour select views without
-changing simulation time. Play advances the preview at the chosen rate; Advance
-hour moves its frontier. Weather/terrain edits reset this preview and invalidate
-old work. Moving the unbound Overlay guide preserves its weather and clock. Viewing weather does not dirty or save the planet/ecosystem assets.
+Open a planet recipe, choose **Ecosystem → Weather**. Its designed globe starts
+an animated pressure heatmap and synoptic overlay automatically. The panel keeps
+weather/event authoring; layer buttons, overlay toggles, numeric readouts, timeline,
+Play/Pause and speed controls are removed. The preview advances at 60 simulation
+seconds per real second only while this page is active. Input edits restart its
+local session; moving an unbound Overlay guide preserves it.
 
-This is the first local analytic simulation backend. Its preview epoch is zero;
-it starts paused at 3600 seconds with the model-defined interval 0–3600 available.
-That interval is analytic preview warm-up, not observed gameplay history. Forecast
-means the same model at future simulation time **conditional on unchanged inputs**.
-No dense time-stepped grid or frame archive is needed. There is one coalescing
-worker per panel and bounded immutable terrain samples; teardown cancels and joins.
+Pressure centres are labelled simply **H** or **L**. Every closed pressure contour
+carries equally spaced arrowheads, following its curve without vector shafts.
+One arc-length-weighted mean wind strength sets each loop's marching speed; the
+mean wind projected along that loop selects its circulation direction. Calm wind
+is stationary. This is a general flow indicator, not a pointwise wind vector.
+The visual rate is radius × 0.002 × wind metres/second, independent of the weather
+clock. A shared phase preserves spacing and is integrated across payload updates.
+Arrowheads can therefore keep moving when an unchanged field is displayed.
+
+The continuous heatmap sits just behind the contours. Its shell uses 18% opacity
+with saturated colour ramps; pressure runs blue through green to amber without a
+grey midpoint. No copied artwork or persistent material assets are needed.
+
+This remains the local analytic simulation backend, with epoch zero and a warm-up
+interval 0–3600. Backend history/forecast queries remain deterministic functions of
+simulation time and unchanged inputs; their earlier controls are no longer on
+this page. There is one coalescing worker per panel, with cancellation/join on
+retirement. Previewing weather does not dirty or save authoring assets.
 
 ## Model and ownership
 
@@ -87,11 +95,13 @@ fighting with the pressure lines. Its altitude is presentation only: it shows
 surface/reference-datum weather, not atmospheric conditions at that height.
 
 The model has 1934 scalar nodes (generic cap 4096), eight background systems and
-four authored slots. At most 16,384 contour segments, 256 contour-anchored wind
-arrows and 16 H/L labels are generated. The native scene retains one mesh, updated
-on data changes; it is not uploaded per render frame. Animated views coalesce to
-at most five evaluations per real second; paused views do no simulation work.
-Changing the selected layer reuses samples when the valid time is unchanged.
+four authored slots. At most 16,384 contour segments, 256 closed flow paths,
+2048 arrowheads (at most 128 per loop) and 16 H/L labels are generated. Paths join
+through shared edge/vertex identities and use spherical arc length, including the
+closing edge. The native scene retains one mesh, updated only on data changes.
+Weather evaluations coalesce to at most five per real second. Per-frame work
+advances bounded visual phases and draws arrowheads; it does not evaluate weather
+or rebuild the heatmap. Superseded path phases are retired with the payload.
 
 Only Overlay changes preserve the input generation. Other recipe changes rebuild
 the bake. If terrain explicitly references Overlay, moving it also rebuilds;

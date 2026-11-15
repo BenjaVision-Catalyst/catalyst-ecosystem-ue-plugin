@@ -1,6 +1,31 @@
 # Weather qualification — 16 November 2026
 
-## Pressure and movable overlay shell
+## Marching contours and automatic view
+
+UE 5.8.4, macOS arm64, native Metal. The focused suite passes 23 checks: 22 clean
+and one with the expected existing missing-art warning, zero failed/not run.
+Checks cover complete closed contour connectivity, every segment participating
+in a flow loop, spherical arc spacing across closure, tangent sampling, doubled
+wind doubling speed, reversed wind reversing motion, frame partition equivalence,
+and stationary calm wind. Pressure labels contain only H or L.
+
+The real Planet editor test confirms the removed controls/readouts are absent,
+weather advances without clicking Play, and authoring dirty flags are preserved.
+It then holds the complete rendered weather payload fixed while taking two native
+screenshots: changing white pixels proves that arrowheads themselves move. Guide
+movement, sky fallback and returning to the biome/climate overlay also pass.
+Evidence is under ThatGame58 `Saved/MarchingWeatherQualification/`, its matching
+log, and `Saved/EcosystemQualification/weather-flow-{a,b}.png` / `weather-running*.png`.
+The unchanged eight-channel model still passes all 72 GT/native conformance cases.
+Native work used one isolated owner and `CCNativeMcpLease`; the controller waited
+outside GT for released state and restored registries, then joined the owner.
+
+The existing legacy schema-1 / algorithm-1 import exclusion below is unchanged.
+No new GT source or numeric weather profile was introduced by this presentation
+change. Earlier layer/history/playback UI qualifications below describe the prior
+interface; current backend history and forecast semantics remain as documented.
+
+## Pressure and movable overlay shell (prior UI)
 
 UE 5.8.4, macOS arm64, native Metal Development editor. The current
 `planetary-weather-2` model adds common-datum pressure and derives bulk tangent

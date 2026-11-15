@@ -5,7 +5,6 @@
 #include "PlanetBuilder/CEBiomePreviewState.h"
 #include "Weather/CEPlanetWeather.h"
 #include "Weather/CEWeatherGlobe.h"
-#include "Widgets/Input/SSpinBox.h"
 #include "Async/Async.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/SBoxPanel.h"
@@ -68,8 +67,7 @@ struct FCEWeatherView
     TArray<FCEWeatherSample> Samples;
     FString Error;
     double Seconds=0;
-    int64 ValidTime=0,Offset=0;
-    int32 Layer=0,Flags=0;
+    int64 ValidTime=0;
 };
 class SCEPlanetBuilder : public SCompoundWidget
 {
@@ -127,13 +125,14 @@ public:
             if(WeatherRevision==Revision&&Result.Error.IsEmpty()&&Result.Field.IsValid()&&Result.Overlay.IsValid())
             {
                 WeatherField=Result.Field;WeatherPositions=MoveTemp(Result.Positions);WeatherCost=Result.Seconds;
-                if(bActive&&Subtab==2&&Result.Layer==WeatherLayer&&Result.Offset==WeatherOffset&&Result.Flags==((bPressureOverlay?1:0)|(bWindOverlay?2:0)|(bHeatmapOverlay?4:0))){WeatherSamples=MoveTemp(Result.Samples);RenderedWeatherTime=Result.ValidTime;Context.PublishOverlay(Result.Overlay);WeatherStatus=WeatherSummary();}
+                if(bActive&&Subtab==2){WeatherSamples=MoveTemp(Result.Samples);RenderedWeatherTime=Result.ValidTime;Context.PublishOverlay(Result.Overlay);WeatherStatus.Reset();}
             }
             else if(WeatherRevision==Revision&&!Result.Error.IsEmpty())WeatherStatus=Result.Error;
         }
-        if(bActive&&Subtab==2&&bWeatherPlaying)
+        if(bActive&&Subtab==2&&WeatherField)
         {
-            const int64 Target=PlayStartSeconds+FMath::FloorToInt64((FPlatformTime::Seconds()-PlayStarted)*PreviewSpeed);
+            WeatherSeconds+=FMath::Max(0.f,D)*60.;
+            const int64 Target=FMath::FloorToInt64(WeatherSeconds);
             if(Target>WeatherClock.AcceptedSeconds()&&WeatherClock.AdvanceTo(Target))bWeatherDirty=true;
         }
         if(bActive&&Subtab==2&&bWeatherDirty&&!WeatherWork.IsValid()&&!Work.IsValid()&&Profile.IsValid()&&Plan)StartWeather(Plan);
@@ -163,16 +162,14 @@ private:
     TSharedPtr<FCEPlanetWeather,ESPMode::ThreadSafe> WeatherField;
     TArray<FVector> WeatherPositions;
     TSharedPtr<const FCEWeatherGlobeMesh,ESPMode::ThreadSafe> WeatherMesh;
-    bool bPressureOverlay=true,bWindOverlay=true,bHeatmapOverlay=true;
     double NextWeatherViewAt=0;
     TArray<FCEWeatherSample> WeatherSamples;
     FCSFieldRuntime WeatherClock{3600};
     FString WeatherStatus=TEXT("Preparing weather for this planet…");
     uint64 WeatherRevision=0;
-    int32 WeatherLayer=0;
-    int64 WeatherOffset=0,PlayStartSeconds=3600,RenderedWeatherTime=3600;
-    double PreviewSpeed=60,PlayStarted=0,WeatherCost=0;
-    bool bWeatherDirty=true,bWeatherPlaying=false;
+    int64 RenderedWeatherTime=3600;
+    double WeatherSeconds=3600,WeatherCost=0;
+    bool bWeatherDirty=true;
     FCEBiomePreviewState PreviewState;
     TSet<FGuid> Expanded;
     TUniquePtr<FScopedTransaction> Dragging;
@@ -185,56 +182,19 @@ private:
     }
     TSharedRef<SWidget> WeatherPage()
     {
-        auto Layer=[this](const TCHAR* Name,int32 Index)->TSharedRef<SWidget>{return SNew(SCheckBox).Style(FAppStyle::Get(),"DetailsView.SectionButton")
-            .IsChecked_Lambda([this,Index]{return WeatherLayer==Index?ECheckBoxState::Checked:ECheckBoxState::Unchecked;})
-            .OnCheckStateChanged_Lambda([this,Index](ECheckBoxState C){if(C==ECheckBoxState::Checked){WeatherLayer=Index;bWeatherDirty=true;}})[Label(Name)];};
-        auto TimeButton=[this](const TCHAR* Name,int64 Offset)->TSharedRef<SWidget>{return SNew(SButton).OnClicked_Lambda([this,Offset]{WeatherOffset=Offset;bWeatherDirty=true;return FReply::Handled();})[Label(Name)];};
         return SNew(SVerticalBox)
-            +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(STextBlock).Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
-                .Text_Lambda([this]{const auto* P=Context.Planet.Get();return FText::FromString(P?P->Recipe.Name:TEXT("Planet unavailable"));})]
-            +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(SHorizontalBox)
-                +SHorizontalBox::Slot().FillWidth(1)[Layer(TEXT("Temperature (°C)"),0)]
-                +SHorizontalBox::Slot().FillWidth(1)[Layer(TEXT("Wind (m/s)"),1)]
-                +SHorizontalBox::Slot().FillWidth(1)[Layer(TEXT("Rain (mm/h)"),2)]
-                +SHorizontalBox::Slot().FillWidth(1)[Layer(TEXT("Pressure (hPa)"),3)]]
-            +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(SHorizontalBox)
-                +SHorizontalBox::Slot().FillWidth(1)[SNew(SCheckBox).IsChecked_Lambda([this]{return bPressureOverlay?ECheckBoxState::Checked:ECheckBoxState::Unchecked;}).OnCheckStateChanged_Lambda([this](ECheckBoxState C){bPressureOverlay=C==ECheckBoxState::Checked;bWeatherDirty=true;})[Label(TEXT("Isobars"))]]
-                +SHorizontalBox::Slot().FillWidth(1)[SNew(SCheckBox).IsChecked_Lambda([this]{return bWindOverlay?ECheckBoxState::Checked:ECheckBoxState::Unchecked;}).OnCheckStateChanged_Lambda([this](ECheckBoxState C){bWindOverlay=C==ECheckBoxState::Checked;bWeatherDirty=true;})[Label(TEXT("Wind arrows"))]]
-                +SHorizontalBox::Slot().FillWidth(1)[SNew(SCheckBox).IsChecked_Lambda([this]{return bHeatmapOverlay?ECheckBoxState::Checked:ECheckBoxState::Unchecked;}).OnCheckStateChanged_Lambda([this](ECheckBoxState C){bHeatmapOverlay=C==ECheckBoxState::Checked;bWeatherDirty=true;})[Label(TEXT("Heatmap"))]]]
-            +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(STextBlock).Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont")).AutoWrapText(true)
+            +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(STextBlock).AutoWrapText(true)
+                .Visibility_Lambda([this]{return WeatherStatus.IsEmpty()?EVisibility::Collapsed:EVisibility::Visible;})
                 .Text_Lambda([this]{return FText::FromString(WeatherStatus);})]
-            +SVerticalBox::Slot().AutoHeight().Padding(4,12,4,4)[SNew(STextBlock).Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
-                .Text_Lambda([this]{return FText::FromString(FString::Printf(TEXT("Simulation time · %s · %s"),*FormatTime(WeatherClock.AcceptedSeconds()),bWeatherPlaying?TEXT("Running"):TEXT("Paused")));})]
-            +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(SHorizontalBox)
-                +SHorizontalBox::Slot().FillWidth(1)[TimeButton(TEXT("Last hour"),-3600)]
-                +SHorizontalBox::Slot().FillWidth(1)[TimeButton(TEXT("Now"),0)]
-                +SHorizontalBox::Slot().FillWidth(1)[TimeButton(TEXT("Next hour"),3600)]]
-            +SVerticalBox::Slot().AutoHeight().Padding(8)[SNew(SSlider).Value_Lambda([this]{return float(WeatherOffset+3600)/7200;})
-                .OnValueChanged_Lambda([this](float V){WeatherOffset=FMath::RoundToInt64(V*7200)-3600;bWeatherDirty=true;})]
-            +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(SHorizontalBox)
-                +SHorizontalBox::Slot().FillWidth(1)[SNew(SButton).Text_Lambda([this]{return FText::FromString(bWeatherPlaying?TEXT("Pause"):TEXT("Play"));})
-                    .OnClicked_Lambda([this]{bWeatherPlaying=!bWeatherPlaying;PlayStarted=FPlatformTime::Seconds();PlayStartSeconds=WeatherClock.AcceptedSeconds();return FReply::Handled();})]
-                +SHorizontalBox::Slot().FillWidth(1)[SNew(SButton).OnClicked_Lambda([this]{WeatherClock.AdvanceTo(WeatherClock.AcceptedSeconds()+3600);bWeatherDirty=true;return FReply::Handled();})[Label(TEXT("Advance hour"))]]
-                +SHorizontalBox::Slot().FillWidth(1)[SNew(SSpinBox<double>).MinValue(1).MaxValue(600).Value_Lambda([this]{return PreviewSpeed;})
-                    .OnValueChanged_Lambda([this](double V){PreviewSpeed=V;PlayStarted=FPlatformTime::Seconds();PlayStartSeconds=WeatherClock.AcceptedSeconds();}).ToolTipText(FText::FromString(TEXT("Simulation seconds per real second")))]]
             +SVerticalBox::Slot().FillHeight(1).Padding(4)[SNew(SScrollBox)+SScrollBox::Slot()[SAssignNew(WeatherDetailsBox,SVerticalBox)]];
-    }
-    static FString FormatTime(int64 S){return FString::Printf(TEXT("%02lld:%02lld:%02lld"),S/3600,(S/60)%60,S%60);}
-    FString WeatherSummary()const
-    {
-        double Min=1.e9,Max=-1.e9;for(const auto& S:WeatherSamples){const double V=WeatherLayer==0?S.TemperatureC:(WeatherLayer==1?S.Wind.Length():(WeatherLayer==2?S.RainMmHour:S.PressureHpa));Min=FMath::Min(Min,V);Max=FMath::Max(Max,V);}
-        const TCHAR* Legend=WeatherLayer==0?TEXT("−40 blue → 40 °C red"):(WeatherLayer==1?TEXT("0 blue → 60 m/s yellow"):(WeatherLayer==2?TEXT("0 clear → 50 mm/h violet"):TEXT("Pressure at common reference datum (hPa)")));
-        const TCHAR* Kind=WeatherOffset<0?TEXT("History"):(WeatherOffset>0?TEXT("Forecast"):TEXT("Now"));
-        const auto Plan=Context.GetPlan();const bool HasGuide=Plan&&Plan->Guides.ContainsByPredicate([](const auto& G){return G.Name==TEXT("Overlay");});
-        return FString::Printf(TEXT("%s at %s · %s\nPlanet range %.1f–%.1f%s\n%s · %.1f m from core"),Kind,*FormatTime(RenderedWeatherTime),Legend,Min,Max,WeatherOffset>0?TEXT(" · current inputs assumed"):TEXT(""),HasGuide?TEXT("Overlay guide"):TEXT("Sky boundary (no Overlay guide)"),Plan?CLPlanetOverlayRadiusMeters(*Plan):0);
     }
     void ResetWeather()
     {
-        WeatherField.Reset();WeatherPositions.Reset();WeatherSamples.Reset();WeatherClock=FCSFieldRuntime(3600);bWeatherDirty=true;bWeatherPlaying=false;WeatherStatus=TEXT("Preparing weather for this planet…");
+        WeatherField.Reset();WeatherPositions.Reset();WeatherSamples.Reset();WeatherClock=FCSFieldRuntime(3600);WeatherSeconds=3600;NextWeatherViewAt=0;bWeatherDirty=true;WeatherStatus=TEXT("Preparing weather for this planet…");
     }
     void StartWeather(TSharedPtr<const FCLCompiledPlanetRecipe> Plan)
     {
-        if(bWeatherPlaying&&FPlatformTime::Seconds()<NextWeatherViewAt)return;
+        if(FPlatformTime::Seconds()<NextWeatherViewAt)return;
         FString Error;bool Pending=false;TSharedPtr<const FCEBiomePlacementPlan> Placement;
         if(!WeatherField)
         {
@@ -243,13 +203,13 @@ private:
         }
         bWeatherDirty=false;WeatherRevision=Revision;NextWeatherViewAt=FPlatformTime::Seconds()+.2;
         auto Field=WeatherField;auto Positions=WeatherPositions;auto Model=Profile->Ecosystem;Model.Climate.SeaLevelMeters=CEPlanetSeaLevelMeters(*Plan);
-        const auto Offset=WeatherOffset,Time=WeatherClock.AcceptedSeconds()+Offset;const int32 Layer=WeatherLayer,Seed=Context.Planet.IsValid()?Context.Planet->Recipe.Seed:0;
-        const bool Pressure=bPressureOverlay,Wind=bWindOverlay,Heatmap=bHeatmapOverlay;const auto Mesh=WeatherMesh;
+        const auto Time=WeatherClock.AcceptedSeconds();const int32 Seed=Context.Planet.IsValid()?Context.Planet->Recipe.Seed:0;
+        const auto Mesh=WeatherMesh;
         auto Cached=RenderedWeatherTime==Time&&Field?WeatherSamples:TArray<FCEWeatherSample>();
         Stop=MakeShared<TAtomic<bool>,ESPMode::ThreadSafe>(false);auto Cancel=Stop;
-        WeatherWork=Async(EAsyncExecution::ThreadPool,[Field,Positions=MoveTemp(Positions),Cached=MoveTemp(Cached),Model,Placement,Plan,Time,Offset,Layer,Seed,Cancel,Mesh,Pressure,Wind,Heatmap]()mutable
+        WeatherWork=Async(EAsyncExecution::ThreadPool,[Field,Positions=MoveTemp(Positions),Cached=MoveTemp(Cached),Model,Placement,Plan,Time,Seed,Cancel,Mesh]()mutable
         {
-            FCEWeatherView R;R.ValidTime=Time;R.Layer=Layer;R.Offset=Offset;R.Flags=(Pressure?1:0)|(Wind?2:0)|(Heatmap?4:0);const double Start=FPlatformTime::Seconds();
+            FCEWeatherView R;R.ValidTime=Time;const double Start=FPlatformTime::Seconds();
             if(!Field)
             {
                 Field=MakeShared<FCEPlanetWeather,ESPMode::ThreadSafe>();TArray<double> Heights;Plan->SampleHeightsMeters(Mesh->Directions,Heights);
@@ -269,7 +229,7 @@ private:
             }
             if(Cancel->Load())return R;
             if(Cached.Num()==Mesh->Directions.Num())R.Samples=MoveTemp(Cached);else if(!Field->Evaluate(Time,R.Samples,R.Error))return R;
-            R.Overlay=CEBuildWeatherGlobe(*Mesh,R.Samples,CLPlanetOverlayRadiusMeters(*Plan),Model.Weather.ReferencePressureHpa,Layer,Pressure,Wind,Heatmap);
+            R.Overlay=CEBuildWeatherGlobe(*Mesh,R.Samples,CLPlanetOverlayRadiusMeters(*Plan),Model.Weather.ReferencePressureHpa,3);
             R.Field=Field;R.Positions=MoveTemp(Positions);R.Seconds=FPlatformTime::Seconds()-Start;return R;
         });
     }
