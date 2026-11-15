@@ -4,6 +4,7 @@ public class CatalystEcosystemPCG : ModuleRules
     public CatalystEcosystemPCG(ReadOnlyTargetRules Target) : base(Target)
     {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
+        bUseUnity=false;
         PublicDependencyModuleNames.AddRange(new[] { "Core", "CoreUObject", "Engine", "PCG", "CatalystEcosystem" });
         bool HasLandform=false;
         try { HasLandform=System.IO.Directory.Exists(GetModuleDirectory("CatalystLandform")); } catch (BuildException) { }

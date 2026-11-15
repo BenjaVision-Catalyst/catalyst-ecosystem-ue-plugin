@@ -39,6 +39,12 @@ struct CATALYSTECOSYSTEM_API FCEBiomeDefinition
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Habitat") FVector2D SlopeDegrees = FVector2D(0,90);
     /** Source UE Biome Core BiomeAsset. Only generated copies are changed by the editor bridge. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Biome Core") FSoftObjectPath BiomeCoreAsset;
+    /** Optional close detail rules when canopy is streamed independently. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Biome Core") FSoftObjectPath DetailBiomeCoreAsset;
+    /** Lighter live distant representation, e.g. canopy without ground scatter. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Biome Core") FSoftObjectPath DistantBiomeCoreAsset;
+    /** Optional live coverage texture parameter used by client ground materials. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Appearance") FName GroundCoverMaskParameter;
 };
 USTRUCT(BlueprintType)
 struct CATALYSTECOSYSTEM_API FCEPlanetEcosystem
@@ -73,6 +79,15 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ecosystem") FCEPlanetEcosystem Ecosystem;
     /** A configured graph with exactly one bounded native VPP surface sampler. Authoring reference, outside the portable climate payload. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Biome Core", meta=(AllowedClasses="/Script/PCG.PCGGraph")) FSoftObjectPath SurfaceSamplerGraph;
+    /** Native Biome Core deployment references; no world instance or generated products are authoring inputs. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Biome Core|Planet") FSoftClassPath RegionActorClass;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Biome Core|Planet") FSoftObjectPath RegionDefinition;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Biome Core|Planet") FSoftObjectPath LocalBiomeCache;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Biome Core|Planet") FSoftObjectPath WindTransformProvider;
+    /** Native Biome Core graph configured for runtime hierarchical generation. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Biome Core|Planet") FSoftObjectPath RuntimeGraph;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Biome Core|Planet", meta=(ClampMin="32",Units="m")) double NearRadiusMeters=150;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Biome Core|Planet", meta=(ClampMin="100",Units="m")) double DistantRadiusMeters=1500;
 #if WITH_EDITOR
     FSimpleMulticastDelegate OnEcosystemChanged;
     virtual void PostEditChangeProperty(FPropertyChangedEvent& Event) override;

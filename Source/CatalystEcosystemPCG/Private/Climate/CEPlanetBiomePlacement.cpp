@@ -1,4 +1,5 @@
 #include "Climate/CEPlanetBiomePlacement.h"
+#include "Climate/CEPlanetScenery.h"
 #include "Async/Async.h"
 #include "Async/ParallelFor.h"
 #include "Containers/Ticker.h"
@@ -11,6 +12,7 @@
 #include "PCG/CLPlanetSurfacePCG.h"
 #include "Scene/CLGroundSurface.h"
 #include "PCGComponent.h"
+#include "PCGSubsystem.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -47,11 +49,12 @@ UCEBiomePlacementState* State(AActor& Owner)
 bool Tick(float)
 {
     if(!GEngine)return true;
-    for(const auto& C:GEngine->GetWorldContexts())if(C.WorldType==EWorldType::PIE)return true;
+    bool Playing=false;for(const auto& C:GEngine->GetWorldContexts())Playing|=C.WorldType==EWorldType::PIE;
     TMap<ACLPlanet*,TPair<UCEPlanetEcosystemAsset*,FString>> Profiles;
     for(const auto& Context:GEngine->GetWorldContexts())
     {
-        auto* W=Context.World();if(Context.WorldType!=EWorldType::Editor||!W||W->bIsTearingDown)continue;
+        auto* W=Context.World();const bool Runtime=Context.WorldType==EWorldType::PIE||Context.WorldType==EWorldType::Game;
+        if((!Runtime&&(Context.WorldType!=EWorldType::Editor||Playing))||!W||W->bIsTearingDown)continue;
         for(TActorIterator<AActor> It(W);It;++It)
         {
             auto* R=It->FindComponentByClass<UCLPlanetSurfaceRegion>();if(!R||!IsValid(R->Planet)||R->Planet->GetSurfaceGenerationKey().IsEmpty())continue;
@@ -70,10 +73,16 @@ bool Tick(float)
             if(S->RequestedKey!=Key)
             {
                 S->RequestedKey=Key;S->PendingKey.Reset();
-                if(S->GeneratedPlacementKey!=Key)CLInvalidatePlanetSurfaceRegion(R);
+                if(S->GeneratedPlacementKey!=Key)
+                {
+                    auto* Component=It->FindComponentByClass<UPCGComponent>();
+                    if(Component&&Component->GenerationTrigger==EPCGComponentGenerationTrigger::GenerateAtRuntime)
+                        Component->GetSubsystem()->RefreshRuntimeGenExecutionSource(Component,EPCGChangeType::None);
+
+                }
             }
             auto* C=It->FindComponentByClass<UPCGComponent>();
-            if(C&&!C->IsGenerating()&&!C->IsCleaningUp()&&C->bGenerated&&R->GeneratedSurfaceKey==R->Planet->GetSurfaceGenerationKey()&&S->PendingKey==Key&&S->GeneratedPlacementKey!=Key)
+            if(C&&!C->IsGenerating()&&!C->IsCleaningUp()&&C->bGenerated&&S->PendingKey==Key&&S->GeneratedPlacementKey!=Key)
             {S->Modify();S->GeneratedPlacementKey=Key;}
         }
     }
@@ -194,13 +203,15 @@ void CERecordBiomePlacement(UObject* Object,UObject* PlanetObject,UCEPlanetEcosy
 }
 void CEStartBiomePlacement()
 {
-#if WITH_CE_PLACEMENT_LANDFORM && WITH_EDITOR
+#if WITH_CE_PLACEMENT_LANDFORM
     if(!Handle.IsValid())Handle=FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateStatic(&Tick),.25f);
+    CEStartPlanetScenery();
 #endif
 }
 void CEStopBiomePlacement()
 {
 #if WITH_CE_PLACEMENT_LANDFORM
+    CEStopPlanetScenery();
     FTSTicker::RemoveTicker(Handle);Handle.Reset();
 #if WITH_EDITOR
     for(auto& W:Watches)if(auto* P=W.Profile.Get())P->OnEcosystemChanged.Remove(W.Handle);Watches.Reset();
@@ -208,3 +219,5 @@ void CEStopBiomePlacement()
     for(auto& E:Cache)if(E->Work.IsValid())E->Work.Wait();Cache.Reset();
 #endif
 }
+
+FString UCEPlanetBiomePlacementLibrary::GetSceneryReport(UObject* Planet){return CEPlanetSceneryReport(Planet);}

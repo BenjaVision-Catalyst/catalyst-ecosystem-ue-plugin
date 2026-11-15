@@ -134,10 +134,10 @@ bounds, density, tags and inherited metadata:
 
 The PCG element executes on the game thread, rejects invalid profiles/frames and
 batches over 65,536 points, and disables element caching so forced regeneration
-observes profile edits. Configured Landform surface regions regenerate after ecosystem edits through
-Landform's existing fenced queue. Ecosystems records its own derived assignment
-key on each region owner. Arbitrary standalone PCG worlds still require explicit
-regeneration because they have no accepted planetary surface binding.
+observes profile edits. Bound native runtime execution sources request refresh through
+Unreal PCG after ecosystem edits. VPP tracks sampled terrain dependencies.
+Ecosystems does not schedule or regenerate partition cells itself. Standalone PCG
+worlds require an explicit runtime source/binding for the same automatic refresh.
 
 ## Catalyst template and ownership
 
@@ -188,7 +188,7 @@ are rejected. Standalone inputs without this metadata retain explicit graph
 settings. Standalone metadata consumption rewrites neither profile nor graph. The optional
 planetary adapter compiles when Landform is present; it resolves the region's
 explicit Planet and the linked ecosystem, including after selecting another
-profile. Landform owns the single editor terrain/scenery refresh queue.
+profile. Native PCG owns generation and VPP tracks terrain dependencies.
 
 
 ## Enabled biome representation
@@ -220,14 +220,10 @@ compiled source recipe and ecosystem payload, not asset names alone. Pure ground
 queries/assignment run off-thread; UObject access/publication stays on the main
 thread. The cache holds at most 32 snapshots and joins outstanding work on shutdown.
 
-Ecosystems invalidates each explicitly configured Landform region when its
-placement-policy version, linked profile or model contents change. It uses
-`CLInvalidatePlanetSurfaceRegion`, a generic consumer invalidation hook in Landform,
-rather than introducing a second generation queue. Landform's existing surface
-key fences tectonic/geology/guide/transform changes. Generated placement keys are
-accepted only after native PCG completion for the current surface; walking freezes
-a completed duplicate. Reopening products made by an older placement policy
-regenerates them. Preview eye/Solo controls only visualization.
+Ecosystems requests native runtime PCG refresh when its linked profile or model
+contents change. VPP independently tracks terrain-query dependencies. The runtime
+PCG filter resolves the original source's explicit Planet and uses the same
+assignment as the Biomes map. Eye/Solo only controls visualization.
 
 The guarantee is biome assignment. A row needs a Biome Core asset to render its
 own foliage. Unconfigured biomes retain their map regions and cannot invent art
@@ -237,3 +233,43 @@ texture baking; consumers of baked masks must use the new assignment query.
 Region ownership is explicit: a linked ecosystem or a previous climate-node
 publication admits the consumer. Merely having the packaged default available for
 preview does not attach Ecosystem state to unlinked generic surface graphs.
+
+## Native runtime deployment and reopening
+
+An ecosystem persists native deployment references on the same asset:
+`RegionActorClass`, `RegionDefinition`, `LocalBiomeCache`, `RuntimeGraph` and
+optional `WindTransformProvider`. Rows reference `BiomeCoreAsset`, optional
+`DetailBiomeCoreAsset` and `DistantBiomeCoreAsset`. The detail rule asset omits
+canopy when it is supplied by the distant rule asset; these are reusable asset
+rules, never generated transforms or a saved vegetation world.
+
+The inspection provider validates these references and collects material inputs.
+It does not generate editor regions. In the running world, Ecosystems installs
+native partitioned PCG execution sources and a native PCGWorldActor if required.
+The configured runtime graph reuses Epic Biome Core's generators and spawners;
+its preview-only spawning gate is removed. Local Preview is false. The native
+PCG runtime scheduler owns cells, radii, generation, cleanup and pooling. Default
+near detail uses 64 m cells within 150 m; canopy uses 512 m cells within 1,500 m.
+No custom spherical tile queue or player-distance scheduling loop remains.
+
+Generator graphs use VPP's native volume sampler with layer-change tracking.
+Classifier context resolves through native GetOriginalComponent, so partition
+actors use the accepted Planet frame, reference radius, seed, OceanHeight and
+linked ecosystem rather than stale graph-authoring values. VPP normals determine
+support slopes; inverted/steep faces cannot anchor upright surface vegetation.
+
+Optional `GroundCoverMaskParameter` binds a transient runtime coverage texture.
+Its assignment channel uses the shared map; its density channel follows currently
+generated canopy. Native product completion/cleanup invalidates that derived
+appearance. Textures and generated instances are not saved. This is a render
+appearance input, not a physical deposit or finite ground resource.
+
+A map-only ecosystem requires no invented art. Configured content with missing
+references fails explicitly. Durable graphs, definitions, rule assets and
+Planet/profile references must be saved in the private project. Generated output,
+a recovery map and Python setup scripts are not reopening dependencies.
+
+`GetSceneryReport` exposes native sources and runtime-managed partition components
+for qualification. Rendered acceptance must cover fresh reopening, native player
+marker input, generation during movement, distant canopy and live terrain edits.
+Historical 96-region snapshot results do not qualify this runtime implementation.

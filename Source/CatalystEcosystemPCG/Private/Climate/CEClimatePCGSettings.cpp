@@ -25,7 +25,7 @@ protected:
         const auto* S=Context->GetInputSettings<UCEClimatePCGSettings>();FString Error;
         auto* Profile=S?S->Profile.Get():nullptr;UObject* Planet=nullptr;AActor* Owner=nullptr;
 #if WITH_CE_PLACEMENT_LANDFORM
-        const auto* Component=Cast<UPCGComponent>(Context->ExecutionSource.GetObject());Owner=Component?Component->GetOwner():nullptr;
+        const auto* Component=Cast<UPCGComponent>(Context->ExecutionSource.GetObject());Owner=Component&&Component->GetOriginalComponent()?Component->GetOriginalComponent()->GetOwner():nullptr;
         const auto* Region=Owner?Owner->FindComponentByClass<UCLPlanetSurfaceRegion>():nullptr;
         if(Region&&IsValid(Region->Planet)){Planet=Region->Planet;Profile=CEPlanetEcosystemProfile(Planet);}
 #endif
@@ -39,6 +39,13 @@ protected:
             if(!Placement){if(Pending)return false;UE_LOG(LogCEClimate,Error,TEXT("Biome placement rejected: %s"),*Error);return true;}
         }
         FTransform Frame=S->PlanetToWorld;double Reference=S->ReferenceRadiusMeters;int32 Seed=S->PlanetSeed;
+#if WITH_CE_PLACEMENT_LANDFORM
+        if(auto* P=Cast<ACLPlanet>(Planet))
+        {
+            Frame=P->GetActorTransform();Reference=P->RadiusMeters*P->RecipeAsset->Recipe.BaseSurfaceNormalized;Seed=P->RecipeAsset->Recipe.Seed;
+            for(const auto& G:P->RecipeAsset->Recipe.RadialGuides.Guides)if(G.Name==TEXT("OceanHeight"))Model.Climate.SeaLevelMeters=G.NormalizedHeight*P->RadiusMeters-Reference;
+        }
+#endif
         // Generic accepted-surface metadata supersedes an old graph-authoring
         // snapshot, without a dependency on the terrain producer's plugin.
         const auto SurfaceInputs=Context->InputData.GetInputsByPin(PCGPinConstants::DefaultInputLabel);
@@ -60,7 +67,7 @@ protected:
         if(!UCEClimatePCGSettings::ValidateFrame(Frame,Reference,Error)){UE_LOG(LogCEClimate,Error,TEXT("Climate frame rejected: %s"),*Error);return true;}
         if(HasSurfaceContext&&ContextCount!=SurfaceInputs.Num()){UE_LOG(LogCEClimate,Error,TEXT("Mixed surface contexts."));return true;}
         if(HasSurfaceContext)Model.Climate.SeaLevelMeters=SurfaceSeaLevel;
-        else if(S->bOverrideSeaLevel)
+        else if(!Planet&&S->bOverrideSeaLevel)
         {
             if(!FMath::IsFinite(S->SeaLevelMeters)){UE_LOG(LogCEClimate,Error,TEXT("OceanHeight context must be finite."));return true;}
             Model.Climate.SeaLevelMeters=S->SeaLevelMeters;
@@ -84,6 +91,13 @@ protected:
         {
             auto* Out=NewObject<UPCGPointData>();Out->InitializeFromData(PointInputs[I]);
             auto* M=Out->Metadata.Get();
+            if(Planet)
+            {
+                M->CreateAttribute<FTransform>(TEXT("Planet_ToWorld"),Frame,false,true);
+                M->CreateAttribute<double>(TEXT("Planet_ReferenceRadiusMeters"),Reference,false,true);
+                M->CreateAttribute<int32>(TEXT("Planet_Seed"),Seed,false,true);
+                M->CreateAttribute<double>(TEXT("Planet_SeaLevelMeters"),Model.Climate.SeaLevelMeters,false,true);
+            }
             if(Placement)M->CreateAttribute<FString>(TEXT("CE_PlacementKey"),Placement->AssignmentKey,false,true);
             auto* Temp=M->CreateAttribute<double>(TEXT("CE_TemperatureC"),0,true,true);
             auto* Wet=M->CreateAttribute<double>(TEXT("CE_Moisture"),0,true,true);
@@ -99,6 +113,7 @@ protected:
             {
                 const FVector Body=Frame.InverseTransformPosition(Point.Transform.GetLocation())*.01;
                 const FVector Normal=Frame.InverseTransformVectorNoScale(Point.Transform.GetRotation().GetAxisZ());
+                if(Planet&&FVector::DotProduct(Body.GetSafeNormal(),Normal)<.5)continue;
                 const auto Sample=Placement?Placement->Evaluate(Body,Normal):FCEClimateEvaluator::Evaluate(Model,Body,Normal,Reference,Seed);
                 if(S->TargetBiome.IsValid()&&Sample.BiomeId!=S->TargetBiome)continue;
                 auto& P=Dest.Add_GetRef(Point);P.MetadataEntry=M->AddEntry(Point.MetadataEntry);
