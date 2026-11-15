@@ -186,7 +186,7 @@ private:
             +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(STextBlock).AutoWrapText(true)
                 .Visibility_Lambda([this]{return WeatherStatus.IsEmpty()?EVisibility::Collapsed:EVisibility::Visible;})
                 .Text_Lambda([this]{return FText::FromString(WeatherStatus);})]
-            +SVerticalBox::Slot().FillHeight(1).Padding(4)[SNew(SScrollBox)+SScrollBox::Slot()[SAssignNew(WeatherDetailsBox,SVerticalBox)]];
+            +SVerticalBox::Slot().FillHeight(1).Padding(4)[SNew(SBox).MinDesiredHeight(480)[SNew(SScrollBox)+SScrollBox::Slot()[SAssignNew(WeatherDetailsBox,SVerticalBox)]]];
     }
     void ResetWeather()
     {

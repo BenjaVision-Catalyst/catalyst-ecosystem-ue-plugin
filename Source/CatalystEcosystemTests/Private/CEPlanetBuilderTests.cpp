@@ -32,6 +32,12 @@ FString WidgetText(TSharedRef<SWidget> Widget)
     FString Text;if(Widget->GetType()==FName(TEXT("STextBlock")))Text=StaticCastSharedRef<STextBlock>(Widget)->GetText().ToString();
     auto* Children=Widget->GetChildren();for(int32 I=0;I<Children->Num();++I)Text+=WidgetText(Children->GetChildAt(I));return Text;
 }
+bool VisibleText(TSharedRef<SWidget> W,const FString& Text)
+{
+    if(!W->GetVisibility().IsVisible()||W->GetCachedGeometry().GetLocalSize().Y<1)return false;
+    if(W->GetType()==FName(TEXT("STextBlock"))&&StaticCastSharedRef<STextBlock>(W)->GetText().ToString()==Text)return true;
+    auto* C=W->GetChildren();for(int32 I=0;I<C->Num();++I)if(VisibleText(C->GetChildAt(I),Text))return true;return false;
+}
 TSharedPtr<SCheckBox> Check(TSharedRef<SWidget> W,const FString& Text)
 {
     if(W->GetType()==FName(TEXT("SCheckBox"))&&WidgetText(W)==Text)return StaticCastSharedRef<SCheckBox>(W);
@@ -189,6 +195,7 @@ struct FToolkitReview : IAutomationLatentCommand
         if(Stage==7)
         {
             if(FPlatformTime::Seconds()-ReadyAt<1||Metrics->Colors==WeatherNowColors)return false;
+            Test->TestTrue(TEXT("Weather authoring retains visible layout height without the old toolbar"),VisibleText(Window.ToSharedRef(),TEXT("Reference pressure (hPa)")));
             Test->TestTrue(TEXT("Weather automatically advances without a Play action"),Metrics->Colors!=WeatherNowColors);
             Capture(TEXT("weather-running-later"));Metrics->FrozenOverlay=Metrics->LastOverlay;Metrics->FreezeWeather=true;ReadyAt=FPlatformTime::Seconds();Stage=8;return false;
         }
