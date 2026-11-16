@@ -125,11 +125,11 @@ public:
             if(WeatherRevision==Revision&&Result.Error.IsEmpty()&&Result.Field.IsValid()&&Result.Overlay.IsValid())
             {
                 WeatherField=Result.Field;WeatherPositions=MoveTemp(Result.Positions);WeatherCost=Result.Seconds;
-                if(bActive&&Subtab==2&&WeatherVisible()){WeatherSamples=MoveTemp(Result.Samples);RenderedWeatherTime=Result.ValidTime;Context.PublishOverlay(Result.Overlay);WeatherStatus.Reset();}
+                if(bActive&&Subtab==2&&WeatherVisible()){WeatherSamples=MoveTemp(Result.Samples);RenderedWeatherTime=Result.ValidTime;Context.PublishOverlay(Result.Overlay);WeatherError.Reset();}
             }
-            else if(WeatherRevision==Revision&&!Result.Error.IsEmpty())WeatherStatus=Result.Error;
+            else if(WeatherRevision==Revision&&!Result.Error.IsEmpty())WeatherError=Result.Error;
         }
-        if(bActive&&Subtab==2&&Profile.IsValid()&&!Profile->Ecosystem.Weather.bEnabled)WeatherStatus.Reset();
+        if(bActive&&Subtab==2&&Profile.IsValid()&&!Profile->Ecosystem.Weather.bEnabled)WeatherError.Reset();
         if(bActive&&Subtab==2&&WeatherField)
         {
             WeatherSeconds+=FMath::Max(0.f,D)*60.;
@@ -166,7 +166,7 @@ private:
     double NextWeatherViewAt=0;
     TArray<FCEWeatherSample> WeatherSamples;
     FCSFieldRuntime WeatherClock{3600};
-    FString WeatherStatus=TEXT("Preparing weather for this planet…");
+    FString WeatherError;
     uint64 WeatherRevision=0;
     int64 RenderedWeatherTime=3600;
     double WeatherSeconds=3600,WeatherCost=0;
@@ -187,13 +187,13 @@ private:
     {
         return SNew(SVerticalBox)
             +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(STextBlock).AutoWrapText(true)
-                .Visibility_Lambda([this]{return WeatherStatus.IsEmpty()?EVisibility::Collapsed:EVisibility::Visible;})
-                .Text_Lambda([this]{return FText::FromString(WeatherStatus);})]
+                .Visibility_Lambda([this]{return WeatherError.IsEmpty()?EVisibility::Collapsed:EVisibility::Visible;})
+                .Text_Lambda([this]{return FText::FromString(WeatherError);})]
             +SVerticalBox::Slot().AutoHeight().Padding(4)[SAssignNew(WeatherDetailsBox,SVerticalBox)];
     }
     void ResetWeather()
     {
-        WeatherField.Reset();WeatherPositions.Reset();WeatherSamples.Reset();WeatherClock=FCSFieldRuntime(3600);WeatherSeconds=3600;NextWeatherViewAt=0;bWeatherDirty=true;WeatherStatus=TEXT("Preparing weather for this planet…");
+        WeatherField.Reset();WeatherPositions.Reset();WeatherSamples.Reset();WeatherClock=FCSFieldRuntime(3600);WeatherSeconds=3600;NextWeatherViewAt=0;bWeatherDirty=true;WeatherError.Reset();
     }
     void StartWeather(TSharedPtr<const FCLCompiledPlanetRecipe> Plan)
     {
@@ -202,7 +202,7 @@ private:
         if(!WeatherField)
         {
             Placement=CEGetCompiledBiomePlacement(Plan,Profile.Get(),Pending,Error);
-            if(!Placement){WeatherStatus=Pending?TEXT("Preparing the accepted planet surface…"):Error;return;}
+            if(!Placement){WeatherError=Pending?FString():Error;return;}
         }
         bWeatherDirty=false;WeatherRevision=Revision;NextWeatherViewAt=FPlatformTime::Seconds()+.2;
         auto Field=WeatherField;auto Positions=WeatherPositions;auto Model=Profile->Ecosystem;Model.Climate.SeaLevelMeters=CEPlanetSeaLevelMeters(*Plan);

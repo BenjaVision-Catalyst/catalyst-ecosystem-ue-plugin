@@ -30,7 +30,8 @@ retirement. Previewing weather does not dirty or save authoring assets.
 
 Weather follows the same compact row as Biomes: enable checkbox, name/description,
 Character (0–100), preview eye, reseed, Solo and an advanced disclosure. Underlying
-weather/event settings are collapsed initially. Dragging Character forms one Undo
+weather/event settings are collapsed initially. Recalculation is silent; only actual
+preview errors appear above the row. Dragging Character forms one Undo
 transaction. Preview eye and Solo never alter the model or saved generation flag;
 Solo temporarily overrides the eye and restores its previous visibility on exit.
 
