@@ -12,5 +12,5 @@ struct CATALYSTECOSYSTEMEDITOR_API FCEWeatherGlobeMesh
 };
 /** Changes to Overlay alone alter presentation, preserving the model input generation and clock. */
 CATALYSTECOSYSTEMEDITOR_API bool CEWeatherTerrainInputsMatch(const FCLCompiledPlanetRecipe& A,const FCLCompiledPlanetRecipe& B);
-CATALYSTECOSYSTEMEDITOR_API TSharedPtr<const FCLPlanetBuilderOverlay> CEBuildWeatherGlobe(const FCEWeatherGlobeMesh& Mesh,TConstArrayView<FCEWeatherSample> Samples,double RadiusMeters,double ReferencePressureHpa,int32 Layer,bool Pressure=true,bool Wind=true,bool Heatmap=true);
+CATALYSTECOSYSTEMEDITOR_API TSharedPtr<const FCLPlanetBuilderOverlay> CEBuildWeatherGlobe(const FCEWeatherGlobeMesh& Mesh,TConstArrayView<FCEWeatherSample> Samples,double RadiusMeters,double ReferencePressureHpa,int32 Layer,bool Pressure=true,bool Wind=true,bool Heatmap=true,bool Fronts=true);
 #endif

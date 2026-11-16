@@ -1,5 +1,43 @@
 # Weather qualification — 16 November 2026
 
+## Thermal front overlay
+
+UE 5.8.4, macOS arm64, native Metal. Seven focused tests pass, zero warnings,
+failures or not-run cases: all six Weather tests plus the actual Planet Designer
+interaction test. The unchanged `planetary-weather-3` model still matches all
+132 exported GT/native point cases. This slice changes only native diagnostics
+and presentation; no GT source or model resource was changed or re-exported.
+
+Fixtures verify uniform air and broad latitude climate produce no fronts, sharp
+thermal boundaries connect, reversing wind swaps Cold/Warm, calm boundaries stay
+Stationary, repeated queries preserve chain ordering and geometry, and a moved
+thermal boundary is diagnosed at its new position. Front samples/tangents remain
+canonical, all marker vertices follow the Overlay radius, cloud/rain broaden the
+transparent band, invalid samples reject, and combined geometry respects bounds.
+The pressure-only topology test separately retains its closed-contour assertions.
+
+One default-model globe (2562 points, seed 17) gives these cold/warm/stationary
+chain counts: 6/10/1 at 0 seconds, 4/7/4 at 3600, and 5/8/4 at 7200. A standalone
+diagnosis followed by the complete overlay build (which diagnoses again) averaged
+3.258 ms over those three queries on this host. This is one declared workload,
+not a universal time guarantee. All added work runs on the existing coalescing
+worker, with no added per-frame weather evaluation.
+
+FirstPlanet was visually inspected with cold triangles, warm semicircles and
+coloured transition bands alongside the H/L pressure overlay. Two captures three
+real seconds apart show evolving fronts. The user's authored Character value and
+1534.9 m Overlay guide were preserved; on-disk planet/profile/guide hashes were
+unchanged by viewing. These are field diagnostics, not calibrated atmospheric
+fronts or acceptance of near-player sky rendering.
+
+Evidence: ThatGame58 `Saved/WeatherFrontQualification/`,
+`Saved/Logs/WeatherFrontQualification.log`,
+`Saved/EcosystemQualification/weather-fronts.txt`,
+`Saved/EcosystemQualification/firstplanet-weather-fronts{,-later}.png` and workspace
+`recovery/weather-fronts-20261116/native-2/`. The native lease reports released,
+original registries restored; its independent Runtime owner was joined through
+cleanup. The live GT image stayed open.
+
 ## Weather Character row
 
 Current profile `planetary-weather-3`, using the unchanged generic

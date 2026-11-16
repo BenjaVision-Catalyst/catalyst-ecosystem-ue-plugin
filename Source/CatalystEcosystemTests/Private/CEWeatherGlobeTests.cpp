@@ -15,7 +15,7 @@ bool FCEWeatherGlobeTest::RunTest(const FString&)
     for(const auto& Pair:Edges)TestEqual(TEXT("Closed topology has no longitude seam or pole boundary"),Pair.Value,2);
     TArray<FCEWeatherSample> Samples;
     for(const auto& D:M.Directions){auto& S=Samples.AddDefaulted_GetRef();S.PressureHpa=1013.25+12*D.Z+9*D.X*D.Y;S.TemperatureC=D.Z*40;S.RainMmHour=(1+D.X)*4;S.Wind=FVector::CrossProduct(FVector::ZAxisVector,D)*6;}
-    const double Begin=FPlatformTime::Seconds();const auto O=CEBuildWeatherGlobe(M,Samples,1500,1013.25,0);
+    const double Begin=FPlatformTime::Seconds();const auto O=CEBuildWeatherGlobe(M,Samples,1500,1013.25,0,true,true,true,false);
     TestEqual(TEXT("Continuous colour mesh retains shared topology"),O->MeshIndices,M.Indices);
     TestTrue(TEXT("Contours, labels and contour-anchored arrows exist"),O->Segments.Num()>0&&O->Labels.Num()>=2&&O->Flows.Num()>0);
     TestTrue(TEXT("Bounded overlay work"),O->Segments.Num()<=16384&&O->Labels.Num()<=16&&O->Flows.Num()<=256);
@@ -42,9 +42,9 @@ bool FCEWeatherGlobeTest::RunTest(const FString&)
     TestEqual(TEXT("Every topology segment participates in a marching loop"),EdgesInFlows,O->Segments.Num());
     TestTrue(TEXT("Arrowhead work is bounded"),Heads>0&&Heads<=2048);
     for(const auto& Label:O->Labels)TestTrue(TEXT("Pressure labels have no numeric values"),Label.Text==TEXT("H")||Label.Text==TEXT("L"));
-    const auto Off=CEBuildWeatherGlobe(M,Samples,1500,1013.25,0,false,false,false);TestTrue(TEXT("Layer visibility is presentation only"),Off->MeshIndices.IsEmpty()&&Off->Segments.IsEmpty()&&Off->Labels.IsEmpty()&&Off->Flows.IsEmpty());
-    auto Faster=Samples;for(auto& S:Faster)S.Wind*=2;const auto Fast=CEBuildWeatherGlobe(M,Faster,1500,1013.25,0);
-    auto Reverse=Samples;for(auto& S:Reverse)S.Wind*=-1;const auto Back=CEBuildWeatherGlobe(M,Reverse,1500,1013.25,0);
+    const auto Off=CEBuildWeatherGlobe(M,Samples,1500,1013.25,0,false,false,false,false);TestTrue(TEXT("Layer visibility is presentation only"),Off->MeshIndices.IsEmpty()&&Off->Segments.IsEmpty()&&Off->Labels.IsEmpty()&&Off->Flows.IsEmpty());
+    auto Faster=Samples;for(auto& S:Faster)S.Wind*=2;const auto Fast=CEBuildWeatherGlobe(M,Faster,1500,1013.25,0,true,true,true,false);
+    auto Reverse=Samples;for(auto& S:Reverse)S.Wind*=-1;const auto Back=CEBuildWeatherGlobe(M,Reverse,1500,1013.25,0,true,true,true,false);
     TestEqual(TEXT("Speed changes preserve the contour count"),Fast->Flows.Num(),O->Flows.Num());
     for(int32 I=0;I<O->Flows.Num();++I)
     {

@@ -20,6 +20,38 @@ The continuous heatmap sits just behind the contours. Its shell uses 18% opacity
 with saturated colour ramps; pressure runs blue through green to amber without a
 grey midpoint. No copied artwork or persistent material assets are needed.
 
+## Fronts on the overlay
+
+Weather also displays connected thermal fronts: blue triangles for advancing cold
+air, red semicircles for advancing warm air, and alternating symbols on opposite
+sides for nearly stationary boundaries. Symbols point across the boundary in the
+advancing air's direction. These use the [NWS surface-front convention](https://www.wpc.ncep.noaa.gov/html/fntcodes2.shtml).
+Pressure contours and their marching wind arrows remain visible alongside them.
+
+The editor diagnoses ridges of temperature-gradient strength on the same closed
+globe used by the field. Three neighbour-smoothing passes at each derivative stage suppress mesh noise;
+least-squares tangent gradients locate the ridge, and shared edge identities join
+its zero crossings into chains across poles and seams. Minimum thermal contrast,
+ridge sharpness and chain length exclude uniform air, broad latitude climate and
+short isolated fragments. The component of wind from cold toward warm determines
+Cold/Warm (or Stationary within ±0.5 m/s). No random decoration, independent drift,
+new simulation clock or domain evolution equation is added.
+
+Front bands tint the existing transparent shell. Their width increases with
+sampled cloud and rain, with stronger rain adding cyan. The same simulation-time
+query produces the same geometry; current field updates move the fronts, while
+history/forecast queries diagnose the boundary at the requested time. Moving
+Overlay changes only their presentation radius. Disabling or hiding Weather
+removes fronts with the rest of the overlay.
+
+This is a surface-field diagnostic, not a calibrated synoptic analysis or a new
+prognostic air-mass solver. It can include terrain-driven thermal boundaries; it
+does not identify occlusions or independently transport moisture. The structured
+front points retain cloud/rain and cross-front wind for sky-planning work, but
+near-player cloud and precipitation renderers are not connected by this change.
+At most 64 chains / 1024 points / 512 symbols are emitted; all lines share the
+existing 16,384 segment budget. Bands reuse the heatmap topology and opacity.
+
 This remains the local analytic simulation backend, with epoch zero and a warm-up
 interval 0–3600. Backend history/forecast queries remain deterministic functions of
 simulation time and unchanged inputs; their earlier controls are no longer on
@@ -126,7 +158,7 @@ fighting with the pressure lines. Its altitude is presentation only: it shows
 surface/reference-datum weather, not atmospheric conditions at that height.
 
 The model has 2075 scalar nodes (generic cap 4096), eight background systems and
-four authored slots. At most 16,384 contour segments, 256 closed flow paths,
+four authored slots. At most 16,384 combined pressure/front segments, 256 closed flow paths,
 2048 arrowheads (at most 128 per loop) and 16 H/L labels are generated. Paths join
 through shared edge/vertex identities and use spherical arc length, including the
 closing edge. The native scene retains one mesh, updated only on data changes.

@@ -1,4 +1,5 @@
 #include "Weather/CEWeatherGlobe.h"
+#include "Weather/CEWeatherFronts.h"
 #if WITH_CE_LANDFORM
 FCEWeatherGlobeMesh FCEWeatherGlobeMesh::Make()
 {
@@ -24,7 +25,7 @@ bool CEWeatherTerrainInputsMatch(const FCLCompiledPlanetRecipe& A,const FCLCompi
     if(!FCLPlanetRecipe::StaticStruct()->CompareScriptStruct(&X,&Probe,0))return false;
     return FCLPlanetRecipe::StaticStruct()->CompareScriptStruct(&X,&Y,0);
 }
-TSharedPtr<const FCLPlanetBuilderOverlay> CEBuildWeatherGlobe(const FCEWeatherGlobeMesh& M,TConstArrayView<FCEWeatherSample> Samples,double Radius,double Reference,int32 Layer,bool Pressure,bool Wind,bool Heatmap)
+TSharedPtr<const FCLPlanetBuilderOverlay> CEBuildWeatherGlobe(const FCEWeatherGlobeMesh& M,TConstArrayView<FCEWeatherSample> Samples,double Radius,double Reference,int32 Layer,bool Pressure,bool Wind,bool Heatmap,bool Fronts)
 {
     auto O=MakeShared<FCLPlanetBuilderOverlay>();O->PointSizePixels=0;
     if(Samples.Num()!=M.Directions.Num()||Samples.IsEmpty()||Radius<=0||!FMath::IsFinite(Radius)||Reference<=0)return O;
@@ -45,10 +46,11 @@ TSharedPtr<const FCLPlanetBuilderOverlay> CEBuildWeatherGlobe(const FCEWeatherGl
             O->MeshBodyMeters.Add(M.Directions[I]*HeatRadius);O->MeshColors.Add(C);
         }
     }
+    if(Fronts)CEAppendWeatherFrontOverlay(M,CEDiagnoseWeatherFronts(M,Samples),Radius,*O);
     if(!Pressure&&!Wind)return O;
     double Min=1.e10,Max=-1.e10;for(const auto& S:Samples){Min=FMath::Min(Min,S.PressureHpa);Max=FMath::Max(Max,S.PressureHpa);}
     const double First=FMath::CeilToDouble(Min/Interval)*Interval;
-    int32 EdgeBudget=16384,HeadBudget=2048;
+    int32 EdgeBudget=16384-O->Segments.Num(),HeadBudget=2048;
     for(int32 Level=0;Level<64&&First+Level*Interval<=Max&&EdgeBudget>0;++Level)
     {
         const double P=First+Level*Interval;
