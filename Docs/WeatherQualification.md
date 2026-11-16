@@ -1,5 +1,33 @@
 # Weather qualification — 16 November 2026
 
+## Weather Character row
+
+Current profile `planetary-weather-3`, using the unchanged generic
+`analytic-field-1` interpreter. Nine GT tests pass. Verified GT exports contain
+26 class/method definitions across three packages, all compared against the live
+image through TonelReader. The graph has 2075 nodes; 132 native point cases match
+all eight channels exactly, including Character endpoints and global disable.
+
+The focused native suite passes 24 tests (23 clean, one expected existing missing-
+art warning), zero failed/not run. It exercises the actual compact Weather row,
+collapsed/expanded values, Character edit/Undo/Redo, reseed/Undo, generation disable,
+disabled slider, preview eye, Solo restoring a hidden eye, re-enable and running
+synoptic animation. Preview actions preserve authored weather values.
+
+A controlled moist-planet scenario samples 128 directions at 96 quarter-hour
+steps over one day. Calm/Moderate/Volatile mean winds are 3.881/11.120/26.898 m/s;
+samples at or above 25 m/s number 0/990/5011, and rain at or above 10 mm/hour
+0/614/2555, each out of 12288 samples. This demonstrates increasing frequency and
+severity for the declared fixture, not calibrated meteorological probabilities.
+GT extreme-envelope checks also compare four seeds over three days. Replay,
+zero-moisture rainfall constraints and disabled static-climate outputs pass.
+
+Evidence: ThatGame58 `Saved/WeatherCharacterQualification/`, its matching log,
+`Saved/EcosystemQualification/weather-character-{row,advanced}.png`, and workspace
+`recovery/weather-character-20261116/` (GT source parity and released/restored
+native gate). Source was exported only through GT into an independent checkout.
+The live image remains open. The existing legacy-import exclusion below remains.
+
 ## Marching contours and automatic view
 
 UE 5.8.4, macOS arm64, native Metal. The focused suite passes 23 checks: 22 clean

@@ -2,7 +2,7 @@
 
 Open a planet recipe, choose **Ecosystem → Weather**. Its designed globe starts
 an animated pressure heatmap and synoptic overlay automatically. The panel keeps
-weather/event authoring; layer buttons, overlay toggles, numeric readouts, timeline,
+one compact Weather row; layer buttons, overlay toggles, numeric readouts, timeline,
 Play/Pause and speed controls are removed. The preview advances at 60 simulation
 seconds per real second only while this page is active. Input edits restart its
 local session; moving an unbound Overlay guide preserves it.
@@ -26,10 +26,40 @@ simulation time and unchanged inputs; their earlier controls are no longer on
 this page. There is one coalescing worker per panel, with cancellation/join on
 retirement. Previewing weather does not dirty or save authoring assets.
 
+## Weather Character
+
+Weather follows the same compact row as Biomes: enable checkbox, name/description,
+Character (0–100), preview eye, reseed, Solo and an advanced disclosure. Underlying
+weather/event settings are collapsed initially. Dragging Character forms one Undo
+transaction. Preview eye and Solo never alter the model or saved generation flag;
+Solo temporarily overrides the eye and restores its previous visibility on exit.
+
+Character runs from Calm (0) through Moderate (50, the default) to Volatile (100).
+The GT model scales natural background strength by `0.35 + 1.3 × Character` and adds
+smooth, independently seeded regional extreme windows. Their roll threshold falls
+as Character rises (`1 − (0.01 + 0.34 × Character²)`), and their additional strength
+rises to `4 × Character²`. The threshold controls relative likelihood, not a
+calibrated percentage of real weather time. The noise roll changes smoothly over
+three-hour intervals; it is independent of queries and viewer/frame count.
+
+Increasing Character therefore increases both extreme-window frequency and
+severity: stronger pressure gradients/wind, heavier moisture-supported rain/cloud,
+and stronger dry-region dust. Terrain, ocean supply and biome climate remain the
+same inputs. Character never creates rain on a dry planet. Natural background
+wind retains the 80 m/s bound and rain 100 mm/hour; cloud/dust fractions are 0–1.
+Advanced parameters remain authored multipliers, rather than being overwritten by
+the knob. Explicit mission-authored events retain their authored intensity/path.
+
+Unchecking Weather disables the row and its preview work. Domain queries still
+return the static terrain climate, reference pressure and zero wind/rain/dust/
+cloud, including authored weather. Character zero alone requests gentle natural
+weather; it does not disable the system. Reseeding changes the deterministic
+weather seed without changing the planet/biome seed.
+
 ## Model and ownership
 
 Portable `CEPlanetWeatherModel` in CatalystEcosystem authors the equations through
-Simulator's `CSFieldBuilder`. `Resources/Weather/planetary-weather-2.json` is its
+Simulator's `CSFieldBuilder`. `Resources/Weather/planetary-weather-3.json` is its
 GT-generated immutable `analytic-field-1` program. The Simulator plugin executes
 that generic profile. The native Ecosystem adapter supplies frozen terrain,
 climate/biome inputs, seed, event definitions and channel/presentation mapping;
@@ -94,7 +124,7 @@ not silently rewritten. The heatmap is inset by 0.1% of shell radius to prevent
 fighting with the pressure lines. Its altitude is presentation only: it shows
 surface/reference-datum weather, not atmospheric conditions at that height.
 
-The model has 1934 scalar nodes (generic cap 4096), eight background systems and
+The model has 2075 scalar nodes (generic cap 4096), eight background systems and
 four authored slots. At most 16,384 contour segments, 256 closed flow paths,
 2048 arrowheads (at most 128 per loop) and 16 H/L labels are generated. Paths join
 through shared edge/vertex identities and use spherical arc length, including the

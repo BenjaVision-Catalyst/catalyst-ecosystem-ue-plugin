@@ -65,6 +65,9 @@ USTRUCT(BlueprintType)
 struct CATALYSTECOSYSTEM_API FCEWeatherSettings
 {
     GENERATED_BODY()
+    UPROPERTY(EditAnywhere, Category="Generation") bool bEnabled=true;
+    /** Calm to volatile: increases natural extreme frequency and severity without moving biomes. */
+    UPROPERTY(EditAnywhere, Category="Generation", meta=(ClampMin="0",ClampMax="1")) double Character=.5;
     UPROPERTY(EditAnywhere, Category="Weather") int32 Seed=1729;
     UPROPERTY(EditAnywhere, Category="Weather", meta=(ClampMin="1",ClampMax="10000",DisplayName="Reference pressure (hPa)")) double ReferencePressureHpa=1013.25;
     UPROPERTY(EditAnywhere, Category="Weather", meta=(ClampMin="0.01",ClampMax="5",ToolTip="Wind response to pressure gradients normalized to the planet reference atmosphere.")) double WindResponse=.6;

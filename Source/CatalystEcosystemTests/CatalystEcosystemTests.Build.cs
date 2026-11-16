@@ -6,6 +6,6 @@ public class CatalystEcosystemTests : ModuleRules
         try { if (System.IO.Directory.Exists(GetModuleDirectory("CatalystLandformEditor"))) PrivateDependencyModuleNames.AddRange(new[] {"CatalystLandform", "CatalystLandformEditor", "Slate", "SlateCore", "ImageWrapper", "PropertyEditor", "AssetTools", "AssetDefinition", "GeometryFramework"}); } catch (BuildException) { }
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
         PublicDependencyModuleNames.AddRange(new string[] { });
-        PrivateDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "UnrealEd", "PCG", "CatalystEcosystem", "CatalystSimulator", "Projects", "Json", "CatalystEcosystemPCG", "CatalystEcosystemEditor", "CatalystFoundation" });
+        PrivateDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "InputCore", "Engine", "UnrealEd", "PCG", "CatalystEcosystem", "CatalystSimulator", "Projects", "Json", "CatalystEcosystemPCG", "CatalystEcosystemEditor", "CatalystFoundation" });
     }
 }

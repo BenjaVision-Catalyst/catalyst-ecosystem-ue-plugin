@@ -125,17 +125,18 @@ public:
             if(WeatherRevision==Revision&&Result.Error.IsEmpty()&&Result.Field.IsValid()&&Result.Overlay.IsValid())
             {
                 WeatherField=Result.Field;WeatherPositions=MoveTemp(Result.Positions);WeatherCost=Result.Seconds;
-                if(bActive&&Subtab==2){WeatherSamples=MoveTemp(Result.Samples);RenderedWeatherTime=Result.ValidTime;Context.PublishOverlay(Result.Overlay);WeatherStatus.Reset();}
+                if(bActive&&Subtab==2&&WeatherVisible()){WeatherSamples=MoveTemp(Result.Samples);RenderedWeatherTime=Result.ValidTime;Context.PublishOverlay(Result.Overlay);WeatherStatus.Reset();}
             }
             else if(WeatherRevision==Revision&&!Result.Error.IsEmpty())WeatherStatus=Result.Error;
         }
+        if(bActive&&Subtab==2&&Profile.IsValid()&&!Profile->Ecosystem.Weather.bEnabled)WeatherStatus.Reset();
         if(bActive&&Subtab==2&&WeatherField)
         {
             WeatherSeconds+=FMath::Max(0.f,D)*60.;
             const int64 Target=FMath::FloorToInt64(WeatherSeconds);
             if(Target>WeatherClock.AcceptedSeconds()&&WeatherClock.AdvanceTo(Target))bWeatherDirty=true;
         }
-        if(bActive&&Subtab==2&&bWeatherDirty&&!WeatherWork.IsValid()&&!Work.IsValid()&&Profile.IsValid()&&Plan)StartWeather(Plan);
+        if(bActive&&Subtab==2&&WeatherVisible()&&bWeatherDirty&&!WeatherWork.IsValid()&&!Work.IsValid()&&Profile.IsValid()&&Plan)StartWeather(Plan);
         if(bActive&&Subtab!=2&&bPreviewDirty&&!Dragging&&!Work.IsValid()&&!WeatherWork.IsValid()&&Profile.IsValid()&&Plan)StartPreview(Plan);
     }
 private:
@@ -169,7 +170,9 @@ private:
     uint64 WeatherRevision=0;
     int64 RenderedWeatherTime=3600;
     double WeatherSeconds=3600,WeatherCost=0;
-    bool bWeatherDirty=true;
+    bool bWeatherDirty=true,bWeatherEye=true,bWeatherSolo=false,bWeatherExpanded=false;
+    bool WeatherVisible()const{return Profile.IsValid()&&Profile->Ecosystem.Weather.bEnabled&&(bWeatherEye||bWeatherSolo);}
+    void RefreshWeatherEye(){Context.PublishOverlay(nullptr);bWeatherDirty=true;}
     FCEBiomePreviewState PreviewState;
     TSet<FGuid> Expanded;
     TUniquePtr<FScopedTransaction> Dragging;
@@ -186,7 +189,7 @@ private:
             +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(STextBlock).AutoWrapText(true)
                 .Visibility_Lambda([this]{return WeatherStatus.IsEmpty()?EVisibility::Collapsed:EVisibility::Visible;})
                 .Text_Lambda([this]{return FText::FromString(WeatherStatus);})]
-            +SVerticalBox::Slot().FillHeight(1).Padding(4)[SNew(SBox).MinDesiredHeight(480)[SNew(SScrollBox)+SScrollBox::Slot()[SAssignNew(WeatherDetailsBox,SVerticalBox)]]];
+            +SVerticalBox::Slot().AutoHeight().Padding(4)[SAssignNew(WeatherDetailsBox,SVerticalBox)];
     }
     void ResetWeather()
     {
@@ -261,6 +264,52 @@ private:
         TUniquePtr<FScopedTransaction> Tx;if(!Dragging)Tx=MakeUnique<FScopedTransaction>(Label);
         Profile->Modify();Action(*B);Profile->PostEditChange();
     }
+    void EditWeather(FText Label,TFunction<void(FCEWeatherSettings&)> Action)
+    {
+        if(!Profile.IsValid())return;
+        TUniquePtr<FScopedTransaction> Tx;if(!Dragging)Tx=MakeUnique<FScopedTransaction>(Label);
+        Profile->SetFlags(RF_Transactional);Profile->Modify();Action(Profile->Ecosystem.Weather);Profile->PostEditChange();
+    }
+    TSharedRef<SWidget> WeatherRow(TSharedRef<SWidget> Details)
+    {
+        auto Enabled=[this]{return Profile.IsValid()&&Profile->Ecosystem.Weather.bEnabled;};
+        const auto Advanced=SNew(SBox).MinDesiredHeight(280).MaxDesiredHeight(420).IsEnabled_Lambda(Enabled)
+            .Visibility_Lambda([this]{return bWeatherExpanded?EVisibility::Visible:EVisibility::Collapsed;})[Details];
+        return SNew(SBorder).BorderImage(FAppStyle::GetBrush("WhiteBrush")).BorderBackgroundColor(FLinearColor(.055,.055,.055)).Padding(6,7)
+            [SNew(SVerticalBox)
+            +SVerticalBox::Slot().AutoHeight()[SNew(SHorizontalBox)
+                +SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0,0,4,0)[SNew(SButton).IsEnabled_Lambda(Enabled)
+                    .ButtonStyle(FAppStyle::Get(),"NoBorder").ContentPadding(0).ToolTipText(FText::FromString(TEXT("Edit underlying weather values")))
+                    .OnClicked_Lambda([this]{bWeatherExpanded=!bWeatherExpanded;return FReply::Handled();})
+                    [SNew(SImage).DesiredSizeOverride(FVector2D(10,10)).Image_Lambda([this]{return FAppStyle::GetBrush(bWeatherExpanded?TEXT("TreeArrow_Expanded"):TEXT("TreeArrow_Collapsed"));})]]
+                +SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0,0,6,0)[SNew(SCheckBox)
+                    .ToolTipText(FText::FromString(TEXT("Include weather in planet generation")))
+                    .IsChecked_Lambda([Enabled]{return Enabled()?ECheckBoxState::Checked:ECheckBoxState::Unchecked;})
+                    .OnCheckStateChanged_Lambda([this](ECheckBoxState V){EditWeather(NSLOCTEXT("CE","WeatherEnable","Enable weather"),[V](auto& W){W.bEnabled=V==ECheckBoxState::Checked;});})]
+                +SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center).Padding(0,0,8,0)[SNew(SVerticalBox)
+                    +SVerticalBox::Slot().AutoHeight()[SNew(STextBlock).IsEnabled_Lambda(Enabled).Text(FText::FromString(TEXT("Weather"))).Font(FAppStyle::GetFontStyle("PropertyWindow.BoldFont"))]
+                    +SVerticalBox::Slot().AutoHeight().Padding(0,3,0,0)[SNew(STextBlock).AutoWrapText(true).Text(FText::FromString(TEXT("Calm days to volatile fronts, strong winds and extreme storms.")))
+                        .Font(FAppStyle::GetFontStyle("SmallFont")).ColorAndOpacity(FLinearColor(.65,.65,.65))]]
+                +SHorizontalBox::Slot().FillWidth(.55).VAlign(VAlign_Center)[SNew(SSlider).IsEnabled_Lambda(Enabled).StepSize(.01)
+                    .Value_Lambda([this]{return Profile.IsValid()?float(Profile->Ecosystem.Weather.Character):.5f;})
+                    .ToolTipText(FText::FromString(TEXT("Weather character: Calm to Volatile. Higher values bring more frequent and stronger extremes. Expand for underlying values.")))
+                    .OnMouseCaptureBegin_Lambda([this]{Dragging=MakeUnique<FScopedTransaction>(NSLOCTEXT("CE","WeatherCharacter","Change weather character"));})
+                    .OnMouseCaptureEnd_Lambda([this]{Dragging.Reset();})
+                    .OnValueChanged_Lambda([this](float V){EditWeather(NSLOCTEXT("CE","WeatherCharacter","Change weather character"),[V](auto& W){W.Character=V;});})]
+                +SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(5,0)[SNew(SBox).WidthOverride(30)[SNew(STextBlock).IsEnabled_Lambda(Enabled)
+                    .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont")).Text_Lambda([this]{FNumberFormattingOptions F;F.SetMaximumFractionalDigits(1);return FText::AsNumber(Profile.IsValid()?Profile->Ecosystem.Weather.Character*100:0,&F);})]]
+                +SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[SNew(SButton).IsEnabled_Lambda(Enabled).ButtonStyle(FAppStyle::Get(),"SimpleButton").ContentPadding(3)
+                    .ToolTipText(FText::FromString(TEXT("Include weather in preview"))).OnClicked_Lambda([this]{if(bWeatherSolo)bWeatherSolo=false;bWeatherEye=!bWeatherEye;RefreshWeatherEye();return FReply::Handled();})
+                    [SNew(SImage).DesiredSizeOverride(FVector2D(16,16)).Image_Lambda([this]{return FAppStyle::GetBrush(WeatherVisible()?TEXT("Level.VisibleIcon16x"):TEXT("Level.NotVisibleIcon16x"));})]]
+                +SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[SNew(SButton).IsEnabled_Lambda(Enabled).ButtonStyle(FAppStyle::Get(),"SimpleButton").ContentPadding(3)
+                    .ToolTipText(FText::FromString(TEXT("Reseed weather"))).OnClicked_Lambda([this]{EditWeather(NSLOCTEXT("CE","WeatherReseed","Reseed weather"),[](auto& W){W.Seed=int32(uint32(W.Seed)+1U);});return FReply::Handled();})
+                    [SNew(SImage).DesiredSizeOverride(FVector2D(16,16)).Image(FAppStyle::GetBrush("Icons.Refresh"))]]
+                +SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(5,0,0,0)[SNew(SBox).WidthOverride(50)[SNew(SButton).IsEnabled_Lambda(Enabled).ContentPadding(FMargin(3,2))
+                    .ToolTipText(FText::FromString(TEXT("Preview weather on its own, restoring its previous visibility when leaving Solo.")))
+                    .OnClicked_Lambda([this]{bWeatherSolo=!bWeatherSolo;RefreshWeatherEye();return FReply::Handled();})
+                    [SNew(STextBlock).Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont")).Text_Lambda([this]{return FText::FromString(bWeatherSolo?TEXT("Unsolo"):TEXT("Solo"));})]]]]
+            +SVerticalBox::Slot().AutoHeight().Padding(16,8,0,0)[Advanced]];
+    }
     TSharedRef<SWidget> Label(const TCHAR* Text){return SNew(STextBlock).Text(FText::FromString(Text)).Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"));}
     void Rebuild()
     {
@@ -272,8 +321,10 @@ private:
         *reinterpret_cast<FCEWeatherSettings*>(WeatherDraft->GetStructMemory())=Profile->Ecosystem.Weather;
         WeatherView=FModuleManager::LoadModuleChecked<FPropertyEditorModule>(TEXT("PropertyEditor")).CreateStructureDetailView(Args,StructArgs,WeatherDraft);
         WeatherView->GetOnFinishedChangingPropertiesDelegate().AddLambda([this](const FPropertyChangedEvent&)
-        {if(!Profile.IsValid())return;const FScopedTransaction Tx(NSLOCTEXT("CE","WeatherEdit","Edit planet weather"));Profile->Modify();Profile->Ecosystem.Weather=*reinterpret_cast<const FCEWeatherSettings*>(WeatherDraft->GetStructMemory());Profile->PostEditChange();});
-        WeatherDetailsBox->AddSlot().AutoHeight()[WeatherView->GetWidget().ToSharedRef()];
+        {EditWeather(NSLOCTEXT("CE","WeatherEdit","Edit planet weather"),[this](auto& W){W=*reinterpret_cast<const FCEWeatherSettings*>(WeatherDraft->GetStructMemory());});});
+        WeatherView->GetDetailsView()->SetIsPropertyVisibleDelegate(FIsPropertyVisible::CreateLambda([](const FPropertyAndParent& P){return P.Property.GetOwnerStruct()!=FCEWeatherSettings::StaticStruct()||(P.Property.GetFName()!=TEXT("bEnabled")&&P.Property.GetFName()!=TEXT("Character"));}));
+        WeatherView->GetDetailsView()->ForceRefresh();
+        WeatherDetailsBox->AddSlot().AutoHeight().Padding(0,1)[WeatherRow(WeatherView->GetWidget().ToSharedRef())];
         ClimateDraft=MakeShared<FStructOnScope>(FCEClimateSettings::StaticStruct());
         *reinterpret_cast<FCEClimateSettings*>(ClimateDraft->GetStructMemory())=Profile->Ecosystem.Climate;
         ClimateView=FModuleManager::LoadModuleChecked<FPropertyEditorModule>(TEXT("PropertyEditor")).CreateStructureDetailView(Args,StructArgs,ClimateDraft);

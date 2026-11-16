@@ -12,7 +12,7 @@ TArray<TArray<int64>> Rows(const TArray<TSharedPtr<FJsonValue>>& A){TArray<TArra
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCEWeatherVectors,"Catalyst.Ecosystem.Weather.GTNativeParity",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
 bool FCEWeatherVectors::RunTest(const FString&)
 {
-    const FString Folder=IPluginManager::Get().FindPlugin(TEXT("CatalystEcosystem"))->GetBaseDir()/TEXT("Resources/Weather/Conformance/planetary-weather-2");FString ProgramJson,Json,Error;
+    const FString Folder=IPluginManager::Get().FindPlugin(TEXT("CatalystEcosystem"))->GetBaseDir()/TEXT("Resources/Weather/Conformance/planetary-weather-3");FString ProgramJson,Json,Error;
     if(!TestTrue(TEXT("GT generated program exists"),FFileHelper::LoadFileToString(ProgramJson,*(Folder/TEXT("program.json"))))||!TestTrue(TEXT("GT vectors exist"),FFileHelper::LoadFileToString(Json,*(Folder/TEXT("vectors.json")))))return false;
     FCSFieldProgram Invalid;
     TestFalse(TEXT("Missing model arrays reject"),Invalid.Load(TEXT("{\"profile\":\"analytic-field-1\"}"),Error));
@@ -45,4 +45,29 @@ bool FCEWeatherPlanet::RunTest(const FString&)
     TestTrue(TEXT("Weather evolves over the hour"),Delta>1);AddInfo(FString::Printf(TEXT("2048-point evaluation %.3f ms; bake %.3f ms"),Millis,Field.LastBakeSeconds*1000));
     M.Weather.Seed++;FCEPlanetWeather Other;TestTrue(TEXT("Other seed initializes"),Other.Initialize(M,P,N,1000,17,Error));TestTrue(TEXT("Other seed evaluates"),Other.Evaluate(3600,B,Error));Delta=0;for(int I=0;I<Count;++I)Delta+=FMath::Abs(A[I].RainMmHour-B[I].RainMmHour);TestTrue(TEXT("Seed changes weather"),Delta>0);
     return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCEWeatherCharacter,"Catalyst.Ecosystem.Weather.CharacterDistribution",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FCEWeatherCharacter::RunTest(const FString&)
+{
+    auto M=FCEPlanetEcosystem::MakeDefault();M.Climate.Moisture=.9;M.Climate.MoistureVariation=0;M.Climate.SubtropicalDrying=0;
+    TArray<FVector> P,N;constexpr int Count=128;
+    for(int I=0;I<Count;++I){const double Z=1-2*(I+.5)/Count,A=I*2.399963229728653;const FVector D(FMath::Sqrt(1-Z*Z)*FMath::Cos(A),FMath::Sqrt(1-Z*Z)*FMath::Sin(A),Z);P.Add(D*1000);N.Add(D);}
+    double Wind[3]={},Rain[3]={};int32 Strong[3]={},Heavy[3]={};FString Error;
+    for(int C=0;C<3;++C)
+    {
+        M.Weather.Character=C*.5;FCEPlanetWeather Field;if(!TestTrue(TEXT("Character bake"),Field.Initialize(M,P,N,1000,17,Error))){AddError(Error);return false;}
+        for(int T=0;T<96;++T)
+        {
+            TArray<FCEWeatherSample> Rows;if(!TestTrue(TEXT("Character window evaluates"),Field.Evaluate(T*900,Rows,Error)))return false;
+            for(const auto& S:Rows){const double Speed=S.Wind.Length();Wind[C]+=Speed;Rain[C]+=S.RainMmHour;Strong[C]+=Speed>=25;Heavy[C]+=S.RainMmHour>=10;TestTrue(TEXT("Weather fractions remain bounded"),S.Cloud>=0&&S.Cloud<=1&&S.Dust>=0&&S.Dust<=1);}
+        }
+    }
+    TestTrue(TEXT("Character increases average wind"),Wind[0]<Wind[1]&&Wind[1]<Wind[2]);
+    TestTrue(TEXT("Character increases strong-wind frequency"),Strong[0]<Strong[1]&&Strong[1]<Strong[2]);
+    TestTrue(TEXT("Character increases rain severity and heavy-rain frequency"),Rain[0]<Rain[1]&&Rain[1]<Rain[2]&&Heavy[0]<Heavy[1]&&Heavy[1]<Heavy[2]);
+    AddInfo(FString::Printf(TEXT("Calm/moderate/volatile: mean wind %.3f/%.3f/%.3f m/s; strong-wind samples %d/%d/%d; heavy-rain samples %d/%d/%d of %d"),Wind[0]/(96*Count),Wind[1]/(96*Count),Wind[2]/(96*Count),Strong[0],Strong[1],Strong[2],Heavy[0],Heavy[1],Heavy[2],96*Count));
+    M.Weather.bEnabled=false;FCEPlanetWeather Off;TestTrue(TEXT("Disabled field remains queryable"),Off.Initialize(M,P,N,1000,17,Error));TArray<FCEWeatherSample> Rows;TestTrue(TEXT("Disabled field evaluates"),Off.Evaluate(7200,Rows,Error));
+    for(int I=0;I<Rows.Num();++I){const auto& S=Rows[I];TestTrue(TEXT("Disabled weather is static climate with no storm"),S.Wind.IsZero()&&S.RainMmHour==0&&S.Cloud==0&&S.Dust==0&&S.PressureHpa==M.Weather.ReferencePressureHpa);TestTrue(TEXT("Disabled temperature retains terrain climate"),FMath::IsNearlyEqual(S.TemperatureC,FCEClimateEvaluator::Evaluate(M,P[I],N[I],1000,17).TemperatureC,.000051));}
+    M.Weather.Character=1.1;TestFalse(TEXT("Out-of-range Character rejects"),M.Validate(Error));return true;
 }

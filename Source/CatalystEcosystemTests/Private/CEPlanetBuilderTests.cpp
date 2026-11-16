@@ -14,6 +14,8 @@
 #include "Widgets/SWindow.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SSlider.h"
+#include "InputCoreTypes.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Framework/Application/SlateApplication.h"
 #include "UObject/StrongObjectPtr.h"
@@ -53,6 +55,11 @@ TSharedPtr<SEditorViewport> PlanetViewport(TSharedRef<SWidget> W)
     if(W->GetType()==FName(TEXT("SCLPlanetPreview")))return StaticCastSharedRef<SEditorViewport>(W);
     auto* C=W->GetChildren();for(int32 I=0;I<C->Num();++I)if(auto V=PlanetViewport(C->GetChildAt(I)))return V;return nullptr;
 }
+TSharedPtr<SWidget> WeatherControl(TSharedRef<SWidget> W,FName Type,const FString& Tip)
+{
+    if(W->GetType()==Type&&W->GetToolTip().IsValid()&&WidgetText(W->GetToolTip()->AsWidget()).Contains(Tip))return W;
+    auto* C=W->GetChildren();for(int32 I=0;I<C->Num();++I)if(auto Found=WeatherControl(C->GetChildAt(I),Type,Tip))return Found;return nullptr;
+}
 struct FToolkitReview : IAutomationLatentCommand
 {
     FAutomationTestBase* Test;
@@ -64,6 +71,7 @@ struct FToolkitReview : IAutomationLatentCommand
     TSharedPtr<SWindow> Window;int32 Stage=0,FullSamples=0;double Start=FPlatformTime::Seconds(),ReadyAt=0,CaptureReady=0;
     bool PlanetDirtyBeforeWeather=false,ProfileDirtyBeforeWeather=false;
     TArray<FLinearColor> WeatherNowColors;
+    FCEWeatherSettings WeatherBeforePreview;
     TArray<FColor> FrozenFlowPixels;FIntPoint FrozenFlowSize;
     explicit FToolkitReview(FAutomationTestBase* T):Test(T)
     {
@@ -195,7 +203,8 @@ struct FToolkitReview : IAutomationLatentCommand
         if(Stage==7)
         {
             if(FPlatformTime::Seconds()-ReadyAt<1||Metrics->Colors==WeatherNowColors)return false;
-            Test->TestTrue(TEXT("Weather authoring retains visible layout height without the old toolbar"),VisibleText(Window.ToSharedRef(),TEXT("Reference pressure (hPa)")));
+            Test->TestFalse(TEXT("Weather underlying values are collapsed by default"),VisibleText(Window.ToSharedRef(),TEXT("Reference pressure (hPa)")));
+            Test->TestTrue(TEXT("Weather has the compact Character row"),WeatherControl(Window.ToSharedRef(),TEXT("SSlider"),TEXT("Weather character:")).IsValid());
             Test->TestTrue(TEXT("Weather automatically advances without a Play action"),Metrics->Colors!=WeatherNowColors);
             Capture(TEXT("weather-running-later"));Metrics->FrozenOverlay=Metrics->LastOverlay;Metrics->FreezeWeather=true;ReadyAt=FPlatformTime::Seconds();Stage=8;return false;
         }
@@ -220,7 +229,61 @@ struct FToolkitReview : IAutomationLatentCommand
         {
             if(!FMath::IsNearlyEqual(Metrics->MeshRadius,99.9,1.e-5)||!Settled())return false;
             Test->TestTrue(TEXT("Moving/removing Overlay retains contour animation and plain labels"),Metrics->FlowPaths>0&&Metrics->PlainLabels);
-            Capture(TEXT("weather-sky-fallback"));if(!Toggle(TEXT("Climate")))return Close();Stage=12;return false;
+            Capture(TEXT("weather-sky-fallback"));Stage=13;return false;
+        }
+        if(Stage==13)
+        {
+            auto Expand=StaticCastSharedPtr<SButton>(WeatherControl(Window.ToSharedRef(),TEXT("SButton"),TEXT("Edit underlying weather values")));
+            if(!Test->TestTrue(TEXT("Weather has an advanced disclosure"),Expand.IsValid()))return Close();Expand->SimulateClick();Stage=14;return false;
+        }
+        if(Stage==14)
+        {
+            if(!VisibleText(Window.ToSharedRef(),TEXT("Reference pressure (hPa)")))return false;Capture(TEXT("weather-character-advanced"));
+            StaticCastSharedPtr<SButton>(WeatherControl(Window.ToSharedRef(),TEXT("SButton"),TEXT("Edit underlying weather values")))->SimulateClick();
+            auto Slider=StaticCastSharedPtr<SSlider>(WeatherControl(Window.ToSharedRef(),TEXT("SSlider"),TEXT("Weather character:")));if(!Test->TestTrue(TEXT("Character slider is usable"),Slider.IsValid()&&Slider->IsEnabled()))return Close();
+            const double Before=Profile->Ecosystem.Weather.Character;
+            Slider->OnKeyDown(Slider->GetCachedGeometry(),FKeyEvent(EKeys::Enter,FModifierKeysState(),0,false,0,0));
+            Slider->OnNavigation(Slider->GetCachedGeometry(),FNavigationEvent(FModifierKeysState(),0,EUINavigation::Right,ENavigationGenesis::Keyboard));
+            Slider->OnKeyDown(Slider->GetCachedGeometry(),FKeyEvent(EKeys::Enter,FModifierKeysState(),0,false,0,0));
+            Test->TestTrue(TEXT("Character edits the authored weather"),Profile->Ecosystem.Weather.Character>Before);
+            GEditor->UndoTransaction();Test->TestEqual(TEXT("Weather Character supports Undo"),Profile->Ecosystem.Weather.Character,Before);
+            GEditor->RedoTransaction();Test->TestTrue(TEXT("Weather Character supports Redo"),Profile->Ecosystem.Weather.Character>Before);GEditor->UndoTransaction();Stage=15;return false;
+        }
+        if(Stage==15)
+        {
+            const int32 Seed=Profile->Ecosystem.Weather.Seed;auto Reseed=StaticCastSharedPtr<SButton>(WeatherControl(Window.ToSharedRef(),TEXT("SButton"),TEXT("Reseed weather")));
+            if(!Test->TestTrue(TEXT("Weather has a reseed action"),Reseed.IsValid()))return Close();Reseed->SimulateClick();Test->TestTrue(TEXT("Reseed changes the weather seed"),Profile->Ecosystem.Weather.Seed!=Seed);GEditor->UndoTransaction();Test->TestEqual(TEXT("Reseed undo restores the seed"),Profile->Ecosystem.Weather.Seed,Seed);
+            WeatherBeforePreview=Profile->Ecosystem.Weather;
+            StaticCastSharedPtr<SButton>(WeatherControl(Window.ToSharedRef(),TEXT("SButton"),TEXT("Include weather in preview")))->SimulateClick();Stage=16;return false;
+        }
+        if(Stage==16)
+        {
+            if(Metrics->Samples!=-1)return false;
+            StaticCastSharedPtr<SButton>(WeatherControl(Window.ToSharedRef(),TEXT("SButton"),TEXT("Preview weather on its own")))->SimulateClick();Stage=17;return false;
+        }
+        if(Stage==17)
+        {
+            if(Metrics->Samples<=0)return false;
+            Test->TestTrue(TEXT("Eye and Solo never rewrite weather authoring"),FCEWeatherSettings::StaticStruct()->CompareScriptStruct(&WeatherBeforePreview,&Profile->Ecosystem.Weather,0));
+            StaticCastSharedPtr<SButton>(WeatherControl(Window.ToSharedRef(),TEXT("SButton"),TEXT("Preview weather on its own")))->SimulateClick();Stage=18;return false;
+        }
+        if(Stage==18)
+        {
+            if(Metrics->Samples!=-1)return false;
+            StaticCastSharedPtr<SButton>(WeatherControl(Window.ToSharedRef(),TEXT("SButton"),TEXT("Include weather in preview")))->SimulateClick();
+            StaticCastSharedPtr<SCheckBox>(WeatherControl(Window.ToSharedRef(),TEXT("SCheckBox"),TEXT("Include weather in planet generation")))->ToggleCheckedState();ReadyAt=FPlatformTime::Seconds();Stage=19;return false;
+        }
+        if(Stage==19)
+        {
+            if(Metrics->Samples!=-1||FPlatformTime::Seconds()-ReadyAt<.2)return false;
+            auto Slider=WeatherControl(Window.ToSharedRef(),TEXT("SSlider"),TEXT("Weather character:"));Test->TestTrue(TEXT("Unchecked weather disables Character"),!Profile->Ecosystem.Weather.bEnabled&&Slider.IsValid()&&!Slider->IsEnabled());
+            StaticCastSharedPtr<SCheckBox>(WeatherControl(Window.ToSharedRef(),TEXT("SCheckBox"),TEXT("Include weather in planet generation")))->ToggleCheckedState();Stage=20;return false;
+        }
+        if(Stage==20)
+        {
+            if(Metrics->Samples<=0||!Settled())return false;
+            Test->TestTrue(TEXT("Re-enabled weather restores the animated overlay"),Profile->Ecosystem.Weather.bEnabled&&Metrics->FlowPaths>0);Capture(TEXT("weather-character-row"));
+            if(!Toggle(TEXT("Climate")))return Close();Stage=12;return false;
         }
         if(Stage==12&&Metrics->Samples==FullSamples)return Close();
         return false;
