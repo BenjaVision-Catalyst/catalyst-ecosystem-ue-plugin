@@ -167,7 +167,11 @@ sharing a payload bounded to 16,384 vertices / 98,304 indices in total. The grou
 layer uses standard lights with exposure-compensated data colours and sampled
 terrain normals. It draws over finer native relief, behind the pressure/front
 graphics, with an antialiased camera-facing hemisphere mask. This avoids depth
-fighting without raising the map to an invented terrain envelope. Pressure uses a blue–purple–orange palette, with no green midpoint.
+fighting without raising the map to an invented terrain envelope. The ground
+map fully replaces terrain albedo while Weather is visible; standard lights and
+its terrain normals retain day/night and relief shading. Fine caster shadows are
+disabled only in this diagnostic view so subsurface interpolation cannot turn
+into false cold-looking blotches. Other designer tabs restore the studio shadows. Pressure uses a blue–purple–orange palette, with no green midpoint.
 Fronts use dark blue/red/purple strokes and filled triangles/semicircles with
 feathered edges; cloud/rain bands do not tint the heatmap.
 Weather evaluations coalesce to at most five per real second. Per-frame work advances persistent visual arrow sites and front opacity; it
