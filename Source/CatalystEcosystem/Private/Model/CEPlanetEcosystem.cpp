@@ -29,6 +29,19 @@ FCEPlanetEcosystem FCEPlanetEcosystem::MakeDefault()
     Add(9,TEXT("Bare ground"),FLinearColor(.35,.3,.28),false,{-100,100},{0,1},-100);
     return M;
 }
+void FCEWeatherSettings::SetCharacter(double Value,double SimulationSeconds)
+{
+    if(!FMath::IsFinite(Value))return;
+    Character=FMath::Clamp(Value,0.,1.);
+    SetTravelMultiplier(FMath::Pow(2.,2.*Character),SimulationSeconds);
+}
+void FCEWeatherSettings::SetTravelMultiplier(double Value,double SimulationSeconds)
+{
+    if(!FMath::IsFinite(Value)||!FMath::IsFinite(SimulationSeconds))return;
+    const double Next=FMath::RoundToDouble(FMath::Clamp(Value,0.,100.)*10000.)/10000.;
+    TravelPhaseOffsetSeconds+=SimulationSeconds*(TravelMultiplier-Next);
+    TravelMultiplier=Next;
+}
 bool FCEPlanetEcosystem::Validate(FString& Error) const
 {
     const auto& C=Climate;
@@ -38,6 +51,8 @@ bool FCEPlanetEcosystem::Validate(FString& Error) const
        ||!Inside(C.TemperatureVariationC,{0,30})||!Inside(C.MoistureVariation,{0,1})||!Inside(C.NoiseFrequency,{1,64})||Biomes.Num()>64)
     {Error=TEXT("Climate values must be finite, within their documented ranges, with a nonzero pole axis and at most 64 biomes.");return false;}
     const auto& W=Weather;
+    if(!Inside(W.TravelMultiplier,{0,100})||!Inside(W.TravelPhaseOffsetSeconds,{-2.e11,2.e11}))
+    {Error=TEXT("Weather travel needs a finite multiplier from 0 to 100 and a bounded trajectory anchor.");return false;}
     if(!Inside(W.Character,{0,1})||!Inside(W.ReferencePressureHpa,{1,10000})||!Inside(W.WindResponse,{.01,5})){Error=TEXT("Weather Character, reference pressure and wind response exceed their finite ranges.");return false;}
     if(!Inside(W.RegionalStrength,{0,3})||!Inside(W.PrevailingWind,{0,40})||!Inside(W.CirculationSeconds,{600,604800})||!Inside(W.DaySeconds,{60,315576000})||W.Events.Num()>4)
     {Error=TEXT("Weather needs valid strength, speed and periods, with at most four authored events.");return false;}

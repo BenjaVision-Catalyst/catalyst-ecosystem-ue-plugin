@@ -92,7 +92,7 @@ weather seed without changing the planet/biome seed.
 ## Model and ownership
 
 Portable `CEPlanetWeatherModel` in CatalystEcosystem authors the equations through
-Simulator's `CSFieldBuilder`. `Resources/Weather/planetary-weather-3.json` is its
+Simulator's `CSFieldBuilder`. `Resources/Weather/planetary-weather-4.json` is its
 GT-generated immutable `analytic-field-1` program. The Simulator plugin executes
 that generic profile. The native Ecosystem adapter supplies frozen terrain,
 climate/biome inputs, seed, event definitions and channel/presentation mapping;
@@ -236,3 +236,28 @@ separate and never feeds weather back into the simulation.
 Real frontogenesis strengthens an existing air-mass temperature contrast; frontolysis
 weakens it. A local frontal passage can be abrupt, but this does not imply a whole
 front suddenly materializes. See the [NWS frontogenesis/frontolysis guide](https://www.weather.gov/media/zhu/ZHU_Training_Page/Miscellaneous/fronts/fronts.pdf).
+
+## Travel multiplier
+
+The advanced Weather settings expose **Weather travel multiplier**. It is a
+continuous value: 1 retains the original natural travel, 0.5 halves it and 2
+doubles it; 0 holds trajectories. The finite supported range is 0–100, represented
+at four decimal places by the existing fixed-point interpreter. The Character
+knob sets travel from 1 at Calm, through 2 at its midpoint, to 4 at Volatile.
+Editing the advanced multiplier overrides that value until Character moves again.
+New settings default to Character 0.5 and travel 2.
+
+Only the natural regional trajectories and their wandering use scaled travel
+time. Day/night, strength/pressure response, extreme forcing and authored mission
+spline schedules keep simulation time. Moving to different terrain can naturally
+change moisture, rain and local temperatures; the multiplier does not amplify
+the weather channels. Marching wind arrowheads still represent local wind speed,
+independently of the regional system's travel multiplier.
+
+Designer edits anchor `travelTime = simulationTime * multiplier + phaseOffset`
+at the accepted simulation second, retaining the position at that moment. The
+anchor is persisted with the settings, including Undo/Redo and export. Character
+and multiplier edits retain the preview clock. Predictions/history are deterministic
+queries for the current input revision; they do not journal earlier authoring edits.
+The runtime adapter maps the multiplier and anchor to uniforms 49/50 of the
+GT-authored v4 model; no second clock or weather solver is introduced.

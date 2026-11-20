@@ -68,6 +68,12 @@ struct CATALYSTECOSYSTEM_API FCEWeatherSettings
     UPROPERTY(EditAnywhere, Category="Generation") bool bEnabled=true;
     /** Calm to volatile: increases natural extreme frequency and severity without moving biomes. */
     UPROPERTY(EditAnywhere, Category="Generation", meta=(ClampMin="0",ClampMax="1")) double Character=.5;
+    /** Multiplies natural weather travel only. Zero holds trajectories; one is the original rate. */
+    UPROPERTY(EditAnywhere, Category="Weather", meta=(ClampMin="0",ClampMax="100",ToolTip="1 keeps the current travel rate. Below 1 slows it; above 1 speeds it up. Zero holds natural travel. Day/night, wind strength and authored event schedules are unchanged.",DisplayName="Weather travel multiplier")) double TravelMultiplier=2;
+    /** Persisted trajectory anchor; the designer adjusts this when the multiplier changes. */
+    UPROPERTY() double TravelPhaseOffsetSeconds=0;
+    void SetTravelMultiplier(double Value,double SimulationSeconds);
+    void SetCharacter(double Value,double SimulationSeconds);
     UPROPERTY(EditAnywhere, Category="Weather") int32 Seed=1729;
     UPROPERTY(EditAnywhere, Category="Weather", meta=(ClampMin="1",ClampMax="10000",DisplayName="Reference pressure (hPa)")) double ReferencePressureHpa=1013.25;
     UPROPERTY(EditAnywhere, Category="Weather", meta=(ClampMin="0.01",ClampMax="5",ToolTip="Wind response to pressure gradients normalized to the planet reference atmosphere.")) double WindResponse=.6;

@@ -1,4 +1,35 @@
-# Weather qualification — 16 November 2026
+# Weather qualification
+
+## Travel multiplier — 21 November 2026
+
+UE 5.8.4, macOS arm64, native Metal: 14 focused tests pass with no automation
+warnings, failures or skipped cases; 12 GT weather tests pass. The v4 program
+contains 2080 nodes (five added), with 240 exact GT/native point cases across all
+eight channels. All original 132 v3 reference cases retain their exact values at
+travel multiplier 1. Existing analytic evaluation owns execution; no extra time
+steps, clock or transport solver were added.
+
+The advanced field accepts a fractional multiplier (0.5 is exercised through the
+native numeric widget), preserves the travel position at the edit time, retains
+the advancing rendered sun/day clock, and supports Undo/Redo. The compact row
+contains no multiplier field. A native mouse interaction with Character increases
+both Character and the travel multiplier, with Undo/Redo retained. Unit checks
+verify the 1/2/4 Character curve, arbitrary advanced overrides, serialized anchors,
+slower/stopped/faster trajectories and unchanged strength/thermal/event timing.
+History/forecast queries remain reproducible for the current input revision.
+
+GT model and test methods were compiled and exported through GT MCP, and every
+exported method was compared with the live image in an independent checkout.
+The portable component is published as `5576330`. Native validation used one
+independent Runtime owner through MCP lease release and positive join; original
+registries were restored. The live image remains open. User planet/profile/map
+hashes match the saved pre-build authoring baseline.
+
+Evidence: `Saved/WeatherTravelQualification/index.json`,
+`Saved/Logs/WeatherTravelQualification.log`,
+`Saved/EcosystemQualification/weather-character-advanced.png`,
+`Saved/EcosystemQualification/weather-character-row.png`, and workspace
+`recovery/weather-travel-20261121/native-6/`.
 
 ## Thermal front overlay
 

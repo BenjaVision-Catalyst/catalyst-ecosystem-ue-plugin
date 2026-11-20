@@ -8,9 +8,9 @@ bool FCEPlanetWeather::Initialize(const FCEPlanetEcosystem& M,TConstArrayView<FV
     const double Begin=FPlatformTime::Seconds();if(!M.Validate(Error))return false;
     if(Positions.IsEmpty()||Positions.Num()>8192||Positions.Num()!=Normals.Num()||Radius<=0||!FMath::IsFinite(Radius)){Error=TEXT("Weather requires bounded accepted terrain samples");return false;}
     auto Plugin=IPluginManager::Get().FindPlugin(TEXT("CatalystEcosystem"));FString Json;
-    if(!Plugin||!FFileHelper::LoadFileToString(Json,*(Plugin->GetBaseDir()/TEXT("Resources/Weather/planetary-weather-3.json")))||!Field.Load(Json,Error))return false;
-    Context=FCSFieldContext();Context.Seed=uint64(uint32(Seed))<<32|uint32(M.Weather.Seed);Context.Uniforms.SetNumZeroed(49);
-    auto& U=Context.Uniforms;U[0]=Fixed(M.Weather.RegionalStrength);U[1]=Fixed(M.Weather.DaySeconds);U[2]=Fixed(M.Weather.CirculationSeconds);U[12]=Fixed(M.Weather.PrevailingWind);U[13]=Fixed(M.Weather.ReferencePressureHpa);U[14]=Fixed(M.Weather.WindResponse);U[15]=Fixed(M.Weather.Character);U[48]=M.Weather.bEnabled?10000:0;
+    if(!Plugin||!FFileHelper::LoadFileToString(Json,*(Plugin->GetBaseDir()/TEXT("Resources/Weather/planetary-weather-4.json")))||!Field.Load(Json,Error))return false;
+    Context=FCSFieldContext();Context.Seed=uint64(uint32(Seed))<<32|uint32(M.Weather.Seed);Context.Uniforms.SetNumZeroed(51);
+    auto& U=Context.Uniforms;U[0]=Fixed(M.Weather.RegionalStrength);U[1]=Fixed(M.Weather.DaySeconds);U[2]=Fixed(M.Weather.CirculationSeconds);U[12]=Fixed(M.Weather.PrevailingWind);U[13]=Fixed(M.Weather.ReferencePressureHpa);U[14]=Fixed(M.Weather.WindResponse);U[15]=Fixed(M.Weather.Character);U[48]=M.Weather.bEnabled?10000:0;U[49]=Fixed(M.Weather.TravelMultiplier);U[50]=Fixed(M.Weather.TravelPhaseOffsetSeconds);
     const FVector Pole=M.Climate.PoleAxis.GetSafeNormal(),Axis=(FMath::Abs(Pole.Z)<.9?FVector::ZAxisVector:FVector::XAxisVector);
     const FVector BasisU=FVector::CrossProduct(Axis,Pole).GetSafeNormal(),BasisV=FVector::CrossProduct(Pole,BasisU);
     for(int I=0;I<3;++I){U[3+I]=Fixed(Pole[I]);U[6+I]=Fixed(BasisU[I]);U[9+I]=Fixed(BasisV[I]);}

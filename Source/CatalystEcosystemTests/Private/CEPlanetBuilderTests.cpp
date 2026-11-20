@@ -15,6 +15,7 @@
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SSlider.h"
+#include "Widgets/Input/SEditableText.h"
 #include "InputCoreTypes.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Framework/Application/SlateApplication.h"
@@ -50,6 +51,21 @@ TSharedPtr<SButton> Button(TSharedRef<SWidget> W,const FString& Text,int32& Inde
     if(W->GetType()==FName(TEXT("SButton"))&&WidgetText(W)==Text&&Index--==0)return StaticCastSharedRef<SButton>(W);
     auto* C=W->GetChildren();for(int32 I=0;I<C->Num();++I)if(auto R=Button(C->GetChildAt(I),Text,Index))return R;return nullptr;
 }
+TSharedPtr<SEditableText> TextEntry(TSharedRef<SWidget> W)
+{
+    if(W->GetType()==TEXT("SEditableText"))return StaticCastSharedRef<SEditableText>(W);
+    auto* C=W->GetChildren();for(int32 I=0;I<C->Num();++I)if(auto V=TextEntry(C->GetChildAt(I)))return V;return nullptr;
+}
+TSharedPtr<SWidget> SpinEntry(TSharedRef<SWidget> W)
+{
+    if(W->GetTypeAsString().StartsWith(TEXT("SSpinBox")))return W;
+    auto* C=W->GetChildren();for(int32 I=0;I<C->Num();++I)if(auto V=SpinEntry(C->GetChildAt(I)))return V;return nullptr;
+}
+TSharedPtr<SWidget> PropertyEntry(TSharedRef<SWidget> W,const FString& Label)
+{
+    auto* C=W->GetChildren();for(int32 I=0;I<C->Num();++I)if(auto V=PropertyEntry(C->GetChildAt(I),Label))return V;
+    return WidgetText(W).Contains(Label)?SpinEntry(W):nullptr;
+}
 TSharedPtr<SEditorViewport> PlanetViewport(TSharedRef<SWidget> W)
 {
     if(W->GetType()==FName(TEXT("SCLPlanetPreview")))return StaticCastSharedRef<SEditorViewport>(W);
@@ -72,6 +88,7 @@ struct FToolkitReview : IAutomationLatentCommand
     bool PlanetDirtyBeforeWeather=false,ProfileDirtyBeforeWeather=false;
     TArray<FLinearColor> WeatherNowColors;
     FCEWeatherSettings WeatherBeforePreview;
+    double TravelMultiplierBefore=0;FVector TravelSunBefore;
     TArray<FColor> FrozenFlowPixels;FIntPoint FrozenFlowSize;
     explicit FToolkitReview(FAutomationTestBase* T):Test(T)
     {
@@ -204,6 +221,7 @@ struct FToolkitReview : IAutomationLatentCommand
         {
             if(FPlatformTime::Seconds()-ReadyAt<1||Metrics->Colors==WeatherNowColors)return false;
             Test->TestFalse(TEXT("Weather underlying values are collapsed by default"),VisibleText(Window.ToSharedRef(),TEXT("Reference pressure (hPa)")));
+            Test->TestFalse(TEXT("Travel multiplier is advanced, absent from compact row"),VisibleText(Window.ToSharedRef(),TEXT("Weather travel multiplier")));
             Test->TestTrue(TEXT("Weather has the compact Character row"),WeatherControl(Window.ToSharedRef(),TEXT("SSlider"),TEXT("Weather character:")).IsValid());
             Test->TestTrue(TEXT("Weather automatically advances without a Play action"),Metrics->Colors!=WeatherNowColors);
             Capture(TEXT("weather-running-later"));Metrics->FrozenOverlay=Metrics->LastOverlay;Metrics->FreezeWeather=true;ReadyAt=FPlatformTime::Seconds();Stage=8;return false;
@@ -238,14 +256,40 @@ struct FToolkitReview : IAutomationLatentCommand
         }
         if(Stage==14)
         {
-            if(!VisibleText(Window.ToSharedRef(),TEXT("Reference pressure (hPa)")))return false;Capture(TEXT("weather-character-advanced"));
+            if(!VisibleText(Window.ToSharedRef(),TEXT("Reference pressure (hPa)")))return false;
+            auto Travel=PropertyEntry(Window.ToSharedRef(),TEXT("Weather travel multiplier"));
+            if(!Test->TestTrue(TEXT("Travel multiplier is editable in advanced settings"),Travel.IsValid())){Test->AddInfo(WidgetText(Window.ToSharedRef()));Capture(TEXT("weather-travel-missing"));return Close();}
+            TravelMultiplierBefore=Profile->Ecosystem.Weather.TravelMultiplier;TravelSunBefore=Metrics->LastOverlay->SunDirection.GetValue();
+            Travel->OnKeyDown(Travel->GetCachedGeometry(),FKeyEvent(EKeys::Enter,FModifierKeysState(),0,false,0,0));
+            auto TravelText=TextEntry(Travel.ToSharedRef());if(!Test->TestTrue(TEXT("Travel enters native text edit mode"),TravelText.IsValid()))return Close();
+            FSlateApplication::Get().SetKeyboardFocus(TravelText,EFocusCause::SetDirectly);TravelText->SetEditableText(FText::FromString(TEXT("0.5")));
+            StaticCastSharedPtr<SWidget>(TravelText)->OnKeyDown(TravelText->GetCachedGeometry(),FKeyEvent(EKeys::Enter,FModifierKeysState(),0,false,0,0));
+            Test->TestEqual(TEXT("Advanced travel commit edits fractional multiplier"),Profile->Ecosystem.Weather.TravelMultiplier,.5);
+            Test->TestTrue(TEXT("Advanced travel commit anchors the existing simulation time"),Profile->Ecosystem.Weather.TravelPhaseOffsetSeconds>1800);
+            FSlateApplication::Get().ClearKeyboardFocus(EFocusCause::Cleared);
+            Stage=141;ReadyAt=FPlatformTime::Seconds();return false;
+        }
+        if(Stage==141)
+        {
+            if(!Metrics->LastOverlay||!Settled()||FPlatformTime::Seconds()-ReadyAt<.5)return false;
+            const FVector AfterSun=Metrics->LastOverlay->SunDirection.GetValue();
+            Test->TestTrue(TEXT("Travel edit preserves the advancing day/night preview clock"),FVector::DotProduct(FVector::CrossProduct(TravelSunBefore,AfterSun),Profile->Ecosystem.Climate.PoleAxis.GetSafeNormal())>0&&FVector::DotProduct(TravelSunBefore,AfterSun)>.99);
+            GEditor->UndoTransaction();Test->TestEqual(TEXT("Travel supports Undo"),Profile->Ecosystem.Weather.TravelMultiplier,TravelMultiplierBefore);
+            GEditor->RedoTransaction();Test->TestEqual(TEXT("Travel supports Redo"),Profile->Ecosystem.Weather.TravelMultiplier,.5);GEditor->UndoTransaction();
+            Capture(TEXT("weather-character-advanced"));
             StaticCastSharedPtr<SButton>(WeatherControl(Window.ToSharedRef(),TEXT("SButton"),TEXT("Edit underlying weather values")))->SimulateClick();
+            Stage=142;return false;
+        }
+        if(Stage==142)
+        {
             auto Slider=StaticCastSharedPtr<SSlider>(WeatherControl(Window.ToSharedRef(),TEXT("SSlider"),TEXT("Weather character:")));if(!Test->TestTrue(TEXT("Character slider is usable"),Slider.IsValid()&&Slider->IsEnabled()))return Close();
             const double Before=Profile->Ecosystem.Weather.Character;
-            Slider->OnKeyDown(Slider->GetCachedGeometry(),FKeyEvent(EKeys::Enter,FModifierKeysState(),0,false,0,0));
-            Slider->OnNavigation(Slider->GetCachedGeometry(),FNavigationEvent(FModifierKeysState(),0,EUINavigation::Right,ENavigationGenesis::Keyboard));
-            Slider->OnKeyDown(Slider->GetCachedGeometry(),FKeyEvent(EKeys::Enter,FModifierKeysState(),0,false,0,0));
+            const auto Geometry=Slider->GetCachedGeometry();if(Geometry.GetLocalSize().X<1)return false;
+            const FVector2D Position=Geometry.LocalToAbsolute(Geometry.GetLocalSize()*FVector2D(.75,.5));
+            const FPointerEvent Press(0,Position,Position,TSet<FKey>{EKeys::LeftMouseButton},EKeys::LeftMouseButton,0,FModifierKeysState());
+            Slider->OnMouseButtonDown(Geometry,Press);Slider->OnMouseCaptureLost(FCaptureLostEvent(0,0));
             Test->TestTrue(TEXT("Character edits the authored weather"),Profile->Ecosystem.Weather.Character>Before);
+            Test->TestTrue(TEXT("Character knob increases travel towards the right"),Profile->Ecosystem.Weather.TravelMultiplier>TravelMultiplierBefore);
             GEditor->UndoTransaction();Test->TestEqual(TEXT("Weather Character supports Undo"),Profile->Ecosystem.Weather.Character,Before);
             GEditor->RedoTransaction();Test->TestTrue(TEXT("Weather Character supports Redo"),Profile->Ecosystem.Weather.Character>Before);GEditor->UndoTransaction();Stage=15;return false;
         }
