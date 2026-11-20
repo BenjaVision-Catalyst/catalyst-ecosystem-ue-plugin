@@ -172,7 +172,10 @@ atmospheric translucency; camera changes rebuild at most 8192 squares. No
 temperature-specific terrain material is generated. Pressure uses a blue–purple–orange palette, with no green midpoint.
 Isobars use 1.875-pixel cores and marching heads use 2.7-pixel cores (1.5 times
 their initial widths), each with a 0.25-pixel black rim per side. Analytic edge
-coverage applies to both the core and rim and shares each arrow's fade. Isobars,
+coverage applies to both the core and rim and shares each arrow's fade. All
+heavier black backing strokes are batched before any coloured isobar or arrow
+cores. The outline surrounds their combined silhouette, with no black seams at
+segment or arrow joins. Isobars,
 arrows and filled front symbols use a depth-independent scene ink layer above unlit
 ground swatches; the pressure heatmap stays in the scene behind these graphics.
 Ink uses standard world translucency with depth testing disabled. The native
