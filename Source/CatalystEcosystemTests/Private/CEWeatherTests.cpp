@@ -1,6 +1,9 @@
 #include "Misc/AutomationTest.h"
 #include "Fields/CSFieldProgram.h"
 #include "Weather/CEPlanetWeather.h"
+#include "Weather/CEWeatherFrontalField.h"
+#include "Weather/CEWeatherTopology.h"
+#include "Weather/CEWeatherFronts.h"
 #include "Interfaces/IPluginManager.h"
 #include "Misc/FileHelper.h"
 #include "Serialization/JsonSerializer.h"
@@ -12,7 +15,7 @@ TArray<TArray<int64>> Rows(const TArray<TSharedPtr<FJsonValue>>& A){TArray<TArra
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCEWeatherVectors,"Catalyst.Ecosystem.Weather.GTNativeParity",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
 bool FCEWeatherVectors::RunTest(const FString&)
 {
-    const FString Folder=IPluginManager::Get().FindPlugin(TEXT("CatalystEcosystem"))->GetBaseDir()/TEXT("Resources/Weather/Conformance/planetary-weather-5");FString ProgramJson,Json,Error;
+    const FString Folder=IPluginManager::Get().FindPlugin(TEXT("CatalystEcosystem"))->GetBaseDir()/TEXT("Resources/Weather/Conformance/planetary-weather-6");FString ProgramJson,Json,Error;
     if(!TestTrue(TEXT("GT generated program exists"),FFileHelper::LoadFileToString(ProgramJson,*(Folder/TEXT("program.json"))))||!TestTrue(TEXT("GT vectors exist"),FFileHelper::LoadFileToString(Json,*(Folder/TEXT("vectors.json")))))return false;
     FCSFieldProgram Invalid;
     TestFalse(TEXT("Missing model arrays reject"),Invalid.Load(TEXT("{\"profile\":\"analytic-field-1\"}"),Error));
@@ -128,5 +131,52 @@ bool FCEPrecipitationPhaseTest::RunTest(const FString&)
         }
         TestTrue(TEXT("Both warm and cold fixtures produce real precipitation"),Total>0);
     }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCEFrontalParity,"Catalyst.Ecosystem.Weather.FrontalGTNativeParity",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FCEFrontalParity::RunTest(const FString&)
+{
+    const FString Folder=IPluginManager::Get().FindPlugin(TEXT("CatalystEcosystem"))->GetBaseDir()/TEXT("Resources/Weather/Conformance/planetary-weather-frontal-1");FString ProgramJson,Json,Error;
+    if(!FFileHelper::LoadFileToString(ProgramJson,*(Folder/TEXT("program.json")))||!FFileHelper::LoadFileToString(Json,*(Folder/TEXT("vectors.json"))))return false;
+    FCSFieldProgram Program;if(!TestTrue(TEXT("GT frontal program loads"),Program.Load(ProgramJson,Error)))return false;
+    TSharedPtr<FJsonObject> J;if(!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Json),J))return false;
+    for(const auto& Value:J->GetArrayField(TEXT("cases")))
+    {
+        const auto Case=Value->AsObject();FCSFieldContext C;C.Uniforms=Row(Case->GetArrayField(TEXT("uniforms")));C.Seconds=3600;C.Seed=1729;
+        TArray<TArray<int64>> Actual;if(!TestTrue(TEXT("Frontal weather executes through generic Simulator"),Program.Evaluate(C,Rows(Case->GetArrayField(TEXT("inputs"))),Actual,Error)))return false;
+        TestTrue(Case->GetStringField(TEXT("name")),Actual==Rows(Case->GetArrayField(TEXT("outputs"))));
+    }
+    return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCEFrontalRain,"Catalyst.Ecosystem.Weather.FrontsDrivePrecipitation",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FCEFrontalRain::RunTest(const FString&)
+{
+    const auto Mesh=FCEWeatherGlobeMesh::Make();TArray<double> Moisture;Moisture.Init(.9,Mesh.Directions.Num());TArray<int64> Uniforms;Uniforms.SetNumZeroed(52);Uniforms[0]=10000;Uniforms[15]=5000;Uniforms[48]=10000;
+    FCEWeatherFrontalField Wet,Dry;FString Error;
+    if(!TestTrue(TEXT("Wet frontal fixture initializes"),Wet.Initialize(Mesh.Directions,Mesh.Directions,Moisture,Moisture,Uniforms,Error)))return false;
+    Moisture.Init(0,Mesh.Directions.Num());if(!TestTrue(TEXT("Dry frontal fixture initializes"),Dry.Initialize(Mesh.Directions,Mesh.Directions,Moisture,Moisture,Uniforms,Error)))return false;
+    TArray<FCEWeatherSample> Base;Base.SetNum(Mesh.Directions.Num());
+    auto Fill=[&](double Speed,double Offset)
+    {
+        for(int32 I=0;I<Base.Num();++I){const auto D=Mesh.Directions[I];auto& S=Base[I];S=FCEWeatherSample();S.AirMassTemperatureC=S.TemperatureC=12*(2/(1+FMath::Exp(-2*(D.X-.1)/.12))-1)+Offset;S.Wind=FVector::VectorPlaneProject(FVector::XAxisVector,D)*Speed;S.PressureHpa=1013.25;}
+    };
+    TArray<FCEWeatherSample> Cold,Warm,Stationary,DryResult,ColdSnow;Fill(12,20);if(!Wet.Evaluate(Base,Cold,Error))return false;
+    Fill(-12,20);if(!Wet.Evaluate(Base,Warm,Error))return false;Fill(0,20);if(!Wet.Evaluate(Base,Stationary,Error)||!Dry.Evaluate(Base,DryResult,Error))return false;
+    Fill(12,-30);if(!Wet.Evaluate(Base,ColdSnow,Error))return false;
+    int32 ColdArea=0,WarmArea=0,WetFrontPoints=0;double ColdPeak=0,WarmPeak=0,StationaryTotal=0,SnowTotal=0;
+    for(int32 I=0;I<Base.Num();++I)
+    {
+        ColdArea+=Cold[I].FrontalPrecipitationMmHour>.2;WarmArea+=Warm[I].FrontalPrecipitationMmHour>.2;
+        ColdPeak=FMath::Max(ColdPeak,Cold[I].FrontalPrecipitationMmHour);WarmPeak=FMath::Max(WarmPeak,Warm[I].FrontalPrecipitationMmHour);StationaryTotal+=Stationary[I].FrontalPrecipitationMmHour;SnowTotal+=ColdSnow[I].SnowMmHour;
+        TestEqual(TEXT("Moisture-starved fronts remain dry"),DryResult[I].PrecipitationMmHour(),0.);TestEqual(TEXT("Cold frontal precipitation becomes snow"),ColdSnow[I].RainMmHour,0.);
+        TestTrue(TEXT("Frontal precipitation stays bounded"),Cold[I].PrecipitationMmHour()>=0&&Cold[I].PrecipitationMmHour()<=100.00001);
+    }
+    const auto Fronts=CEDiagnoseWeatherFronts(Mesh,Cold);for(const auto& F:Fronts)for(const auto& P:F.Points)WetFrontPoints+=P.FrontalPrecipitationMmHour>.05;
+    TestTrue(TEXT("Cold fronts produce stronger narrower precipitation bands"),ColdPeak>WarmPeak&&WarmArea>ColdArea);
+    TestTrue(TEXT("Shared displayed fronts sample actual frontal precipitation"),!Fronts.IsEmpty()&&WetFrontPoints>0);
+    TestTrue(TEXT("Stationary moist fronts keep precipitation"),StationaryTotal>0);TestTrue(TEXT("Cold frontal system produces snowfall"),SnowTotal>0);
+    TestTrue(TEXT("Dry fronts remain visible without rain"),!CEDiagnoseWeatherFronts(Mesh,DryResult).IsEmpty());
+    AddInfo(FString::Printf(TEXT("Frontal bands: cold area %d peak %.3f, warm area %d peak %.3f; wet displayed front points %d; stationary total %.3f, snow total %.3f"),ColdArea,ColdPeak,WarmArea,WarmPeak,WetFrontPoints,StationaryTotal,SnowTotal));
     return true;
 }

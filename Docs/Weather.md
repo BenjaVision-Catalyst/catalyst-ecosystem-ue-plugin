@@ -92,7 +92,7 @@ weather seed without changing the planet/biome seed.
 ## Model and ownership
 
 Portable `CEPlanetWeatherModel` in CatalystEcosystem authors the equations through
-Simulator's `CSFieldBuilder`. `Resources/Weather/planetary-weather-5.json` is its
+Simulator's `CSFieldBuilder`. `Resources/Weather/planetary-weather-6.json` is its
 GT-generated immutable `analytic-field-1` program. The Simulator plugin executes
 that generic profile. The native Ecosystem adapter supplies frozen terrain,
 climate/biome inputs, seed, event definitions and channel/presentation mapping;
@@ -260,7 +260,7 @@ anchor is persisted with the settings, including Undo/Redo and export. Character
 and multiplier edits retain the preview clock. Predictions/history are deterministic
 queries for the current input revision; they do not journal earlier authoring edits.
 The runtime adapter maps the multiplier and anchor to uniforms 49/50 of the
-GT-authored v5 model; no second clock or weather solver is introduced.
+GT-authored weather model; no second clock or weather solver is introduced.
 
 ## Rain and snow intensity
 
@@ -290,3 +290,49 @@ split adds seven graph nodes and no timesteps. The overlay uses the existing
 single triangle shell/material, with no extra draw layer, texture, mesh or render
 asset. Guide movement, AA ink and ground-temperature layering stay on the shared
 Planet Designer path.
+
+## Frontal precipitation and the shared boundary field
+
+Previously the native overlay diagnosed fronts after querying weather; the rain
+model did not use those boundaries. The current pipeline couples both. The GT
+background definition (`planetary-weather-6-background`) emits the previous nine
+weather channels plus air-mass temperature. It removes the positive-land altitude
+lapse for boundary detection; surface temperature still includes altitude cooling
+and continues to determine rain/snow. Subsea bathymetry is not inverted into an
+air-mass cooling term.
+
+`CEWeatherFrontalField` supplies canonical spatial inputs: a baked six-neighbour
+sample graph, tangent least-squares gradients and smoothed ridge derivatives.
+This is view-independent scalar geometry, reusing the earlier diagnostic's
+stencil work. The GT `frontalDefinition` owns front confidence thresholds,
+moisture gating, cold/warm/stationary lifting, intensity, extra cloud/cooling,
+precipitation cap and rain/snow split. The native adapter has no second set of
+weather equations. Both programs execute through the unchanged generic Simulator.
+
+Cold-front rain is stronger and concentrated near the thermal ridge. Warm-front
+rain extends onto the colder side using a warmward probe. Stationary moist fronts
+can sustain precipitation; dry fronts remain visible without manufactured rain.
+Local/biome water supply and existing storm precipitation gate moisture. Terrain
+normals still affect upslope enhancement. Existing regional/mission rainfall is
+retained and total precipitation stays capped at 100 mm/h water equivalent.
+These are game coefficients, not a calibrated atmospheric column/moisture solver.
+They follow the broad lifting behaviour described by
+[NWS front education](https://www.weather.gov/jkl/education) and
+[NWS air masses/fronts](https://www.weather.gov/lmk/basic-fronts).
+
+The two spatial probes (+/-0.12 radians) use fixed cached neighbourhoods and
+continuous compact-support interpolation, avoiding changing-neighbour-rank jumps.
+Their strength fades with the local thermal gradient. A front's diagnostic
+confidence and its precipitation come from the same inputs; the displayed line
+does not act as a rainfall emitter. Air-mass diagnostics are retained before the
+additional precipitation cooling, preventing a self-reinforcing cooling/front loop.
+Cloud fronts remain sharp symbols; no artificial cloud bands were reintroduced.
+
+The background stage has 2091 nodes and the frontal stage 225. No fluid grid,
+extra timesteps, clock or RNG stream was added. Uniform 51 is the climate lapse
+rate; the current input vector contains 52 uniforms. The frontal program takes
+30 spatial inputs and emits the nine final weather channels plus confidence and
+frontal precipitation contribution. `FCEWeatherSample` and front points expose
+the contribution for game queries. Forecast/history use the same immutable full
+canonical sampling context; a camera-dependent subset is not a substitute for
+that context. Arbitrary isolated point probes remain a separate production gate.

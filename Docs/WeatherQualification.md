@@ -1,5 +1,42 @@
 # Weather qualification
 
+## Fronts drive precipitation — 21 November 2026
+
+UE 5.8.4, macOS arm64, native Metal: all 18 focused native/editor tests pass with
+no automation warnings, failures or skipped cases. All 18 GT model tests and
+8 plugin tooling tests pass. The unchanged generic Simulator executes both the
+2091-node background stage (240 exact GT/native point cases) and the 225-node
+frontal stage (8 exact vectors). Two exported class definitions and all 38 methods
+match the authoritative GT image. Portable source is published as `82e43cf`.
+
+A controlled moist air-mass boundary gives cold-front peak 20.010 mm/h over 380
+samples and warm-front peak 9.001 mm/h over 538 samples above the 0.2 mm/h cutoff.
+Thus the cold band is stronger/narrower and the warm band broader. 187 sampled
+points on the displayed fronts have positive frontal precipitation. Moist
+stationary fronts retain rain; an identical dry boundary remains visible with
+zero precipitation. Cold forcing produces snow. Bounds, forecast replay,
+freezing phase, disable, stable pressure/wind and land/subsea lapse checks pass.
+
+The complete 2048-point query took 19.877 ms, with a 28.387 ms input bake in this
+run. Spatial neighbours/weights are baked once; derivative work moved from the
+visual diagnostic into shared model inputs. The view only extracts the resulting
+boundary. These are one host/workload measurements, not universal time guarantees.
+No fluid solver, new timestep schedule, independent clock or RNG was introduced.
+
+Altitude lapse is removed only for air-mass diagnostics and only above sea level;
+surface temperature still drives rain/snow. Probe interpolation has fixed stencil
+membership, compact smooth support and local-gradient gating. Additional rain
+cooling does not feed back into the boundary that produced it. The model remains
+an analytic game approximation, with conserved moisture transport, vertical
+wet-bulb physics and arbitrary isolated point probes still outside qualification.
+
+Native validation retained one independent Runtime owner through lease release,
+restored original MCP registries and positively joined cleanup. The GT image
+remains open. Saved user planet/profile/map hashes match the pre-build baseline.
+Evidence: `Saved/WeatherFrontalRainQualification/index.json`, its matching log,
+`Saved/EcosystemQualification/weather-character-row.png`, and workspace
+`recovery/weather-front-rain-20261121/native-2/`.
+
 ## Rain/snow intensity — 21 November 2026
 
 UE 5.8.4, macOS arm64, native Metal: 16 focused tests pass, with no automation

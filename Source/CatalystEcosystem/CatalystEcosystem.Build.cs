@@ -5,7 +5,8 @@ public class CatalystEcosystem : ModuleRules
     {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
         PublicDependencyModuleNames.AddRange(new[] { "Core", "CoreUObject", "Engine", "CatalystFoundation", "CatalystSimulator" });
-        PrivateDependencyModuleNames.AddRange(new string[] { "Projects" });
-        RuntimeDependencies.Add("$(PluginDir)/Resources/Weather/planetary-weather-5.json");
+        PrivateDependencyModuleNames.AddRange(new string[] { "Projects", "Json" });
+        RuntimeDependencies.Add("$(PluginDir)/Resources/Weather/planetary-weather-6.json");
+        RuntimeDependencies.Add("$(PluginDir)/Resources/Weather/planetary-weather-frontal-1.json");
     }
 }

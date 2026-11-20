@@ -6,6 +6,7 @@ FCEWeatherFrontPoint Blend(const FCEWeatherFrontPoint& A,const FCEWeatherFrontPo
     FCEWeatherFrontPoint P;P.Direction=FMath::Lerp(A.Direction,B.Direction,F).GetSafeNormal();
     P.Warmward=FVector::VectorPlaneProject(FMath::Lerp(A.Warmward,B.Warmward,F),P.Direction).GetSafeNormal();
     P.Strength=FMath::Lerp(A.Strength,B.Strength,F);P.Cloud=FMath::Lerp(A.Cloud,B.Cloud,F);P.PrecipitationMmHour=FMath::Lerp(A.PrecipitationMmHour,B.PrecipitationMmHour,F);
+    P.FrontalPrecipitationMmHour=FMath::Lerp(A.FrontalPrecipitationMmHour,B.FrontalPrecipitationMmHour,F);
     P.CrossWindMetersPerSecond=FMath::Lerp(A.CrossWindMetersPerSecond,B.CrossWindMetersPerSecond,F);return P;
 }
 }
@@ -37,53 +38,16 @@ TArray<FCEWeatherFront> CEDiagnoseWeatherFronts(const FCEWeatherGlobeMesh& M,TCo
     TArray<FCEWeatherFront> Fronts;const int32 N=M.Directions.Num();
     if(N<3||N>8192||Samples.Num()!=N||M.Indices.Num()%3||M.Indices.Num()>49152)return Fronts;
     for(int32 I:M.Indices)if(I<0||I>=N)return Fronts;
-    for(int32 I=0;I<N;++I)if(M.Directions[I].ContainsNaN()||!FMath::IsFinite(Samples[I].TemperatureC)||Samples[I].Wind.ContainsNaN()||!FMath::IsFinite(Samples[I].Cloud)||!FMath::IsFinite(Samples[I].PrecipitationMmHour()))return Fronts;
-    TArray<TArray<int32>> Neighbours;Neighbours.SetNum(N);
-    for(int32 I=0;I<M.Indices.Num();I+=3)for(int32 E=0;E<3;++E)
-    {const int32 A=M.Indices[I+E],B=M.Indices[I+(E+1)%3];Neighbours[A].AddUnique(B);Neighbours[B].AddUnique(A);}
-    TArray<double> Temperature;for(const auto& S:Samples)Temperature.Add(S.TemperatureC);
-    // Derivatives amplify small stencil differences at the icosphere's valence-five
-    // vertices. Smooth each derivative stage as well as the original temperature.
-    auto Smooth=[&](TArray<double>& Values)
-    {
-        for(int32 Pass=0;Pass<3;++Pass)
-        {
-            auto Next=Values;
-            for(int32 I=0;I<N;++I)if(!Neighbours[I].IsEmpty())
-            {double Sum=0;for(int32 J:Neighbours[I])Sum+=Values[J];Next[I]=.5*(Values[I]+Sum/Neighbours[I].Num());}
-            Values=MoveTemp(Next);
-        }
-    };
-    Smooth(Temperature);
-    auto Gradient=[&](const TArray<double>& Values)
-    {
-        TArray<FVector> G;G.SetNumZeroed(N);
-        for(int32 I=0;I<N;++I)
-        {
-            FVector X,Y;M.Directions[I].FindBestAxisVectors(X,Y);double XX=0,XY=0,YY=0,BX=0,BY=0;
-            for(int32 J:Neighbours[I])
-            {
-                const FVector Offset=FVector::VectorPlaneProject(M.Directions[J]-M.Directions[I],M.Directions[I]);
-                const double U=FVector::DotProduct(Offset,X),V=FVector::DotProduct(Offset,Y),W=1/FMath::Max(1.e-12,U*U+V*V),D=Values[J]-Values[I];
-                XX+=U*U*W;XY+=U*V*W;YY+=V*V*W;BX+=D*U*W;BY+=D*V*W;
-            }
-            const double Det=XX*YY-XY*XY;if(Det>1.e-10)G[I]=X*((BX*YY-BY*XY)/Det)+Y*((BY*XX-BX*XY)/Det);
-        }
-        return G;
-    };
-    const auto Thermal=Gradient(Temperature);TArray<double> Strength;for(const auto& G:Thermal)Strength.Add(G.Length());Smooth(Strength);
-    const auto StrengthGradient=Gradient(Strength);TArray<double> Across;
-    for(int32 I=0;I<N;++I)Across.Add(FVector::DotProduct(StrengthGradient[I],Thermal[I].GetSafeNormal()));
-    Smooth(Across);const auto AcrossGradient=Gradient(Across);
+    for(int32 I=0;I<N;++I)if(M.Directions[I].ContainsNaN()||!FMath::IsFinite(Samples[I].TemperatureC)||!FMath::IsFinite(Samples[I].FrontAcross)||!FMath::IsFinite(Samples[I].FrontStrength)||Samples[I].Wind.ContainsNaN()||!FMath::IsFinite(Samples[I].Cloud)||!FMath::IsFinite(Samples[I].PrecipitationMmHour()))return Fronts;
     struct FNode{FCEWeatherFrontPoint Point;TArray<int32> Links;};
     struct FLink{int32 A,B;ECEWeatherFrontKind Kind;bool Used=false;};
     TArray<FNode> Nodes;TArray<FLink> Links;TMap<uint64,int32> Ids;TSet<uint64> Edges;
     for(int32 I=0;I<M.Indices.Num()&&Links.Num()<4096;I+=3)
     {
-        int32 Hits[3],Count=0;double G=0,Sharpness=0;
+        int32 Hits[3],Count=0;
         for(int32 E=0;E<3;++E)
         {
-            int32 A=M.Indices[I+E],B=M.Indices[I+(E+1)%3];if(A>B)Swap(A,B);const double X=Across[A],Y=Across[B];
+            int32 A=M.Indices[I+E],B=M.Indices[I+(E+1)%3];if(A>B)Swap(A,B);const double X=Samples[A].FrontAcross,Y=Samples[B].FrontAcross;
             if(!((X<0&&Y>=0)||(Y<0&&X>=0)))continue;
             const double F=-X/(Y-X);const uint64 Key=X==0?(uint64(1)<<63)|uint32(A):(Y==0?(uint64(1)<<63)|uint32(B):(uint64(A)<<32)|uint32(B));
             int32 Id;
@@ -91,18 +55,15 @@ TArray<FCEWeatherFront> CEDiagnoseWeatherFronts(const FCEWeatherGlobeMesh& M,TCo
             else
             {
                 FNode Node;auto& P=Node.Point;P.Direction=FMath::Lerp(M.Directions[A],M.Directions[B],F).GetSafeNormal();
-                P.Warmward=FVector::VectorPlaneProject(FMath::Lerp(Thermal[A],Thermal[B],F),P.Direction).GetSafeNormal();
+                P.Warmward=FVector::VectorPlaneProject(FMath::Lerp(Samples[A].FrontWarmward,Samples[B].FrontWarmward,F),P.Direction).GetSafeNormal();
                 P.CrossWindMetersPerSecond=FVector::DotProduct(FMath::Lerp(Samples[A].Wind,Samples[B].Wind,F),P.Warmward);
-                const double ThermalStrength=FMath::Lerp(Strength[A],Strength[B],F);
-                const double Sharp=-FVector::DotProduct(FMath::Lerp(AcrossGradient[A],AcrossGradient[B],F),P.Warmward);
-                auto Ease=[](double V){V=FMath::Clamp(V,0.,1.);return V*V*(3-2*V);};
-                P.Strength=Ease((ThermalStrength-8)/8)*Ease((Sharp/FMath::Max(.001,ThermalStrength)-4)/4);
+                P.Strength=FMath::Clamp(FMath::Lerp(Samples[A].FrontStrength,Samples[B].FrontStrength,F),0.,1.);
                 P.Cloud=FMath::Clamp(FMath::Lerp(Samples[A].Cloud,Samples[B].Cloud,F),0.,1.);P.PrecipitationMmHour=FMath::Clamp(FMath::Lerp(Samples[A].PrecipitationMmHour(),Samples[B].PrecipitationMmHour(),F),0.,100.);
+                P.FrontalPrecipitationMmHour=FMath::Lerp(Samples[A].FrontalPrecipitationMmHour,Samples[B].FrontalPrecipitationMmHour,F);
                 Id=Nodes.Add(MoveTemp(Node));Ids.Add(Key,Id);
             }
             bool Duplicate=false;for(int32 H=0;H<Count;++H)Duplicate|=Hits[H]==Id;if(Duplicate)continue;
-            Hits[Count++]=Id;G+=FMath::Lerp(Strength[A],Strength[B],F);
-            Sharpness-=FVector::DotProduct(FMath::Lerp(AcrossGradient[A],AcrossGradient[B],F),Nodes[Id].Point.Warmward);
+            Hits[Count++]=Id;
         }
         // A ridge, not a thermal minimum or the smooth planetary latitude gradient.
         // Units are degrees C/radian, keeping this diagnostic independent of planet size.

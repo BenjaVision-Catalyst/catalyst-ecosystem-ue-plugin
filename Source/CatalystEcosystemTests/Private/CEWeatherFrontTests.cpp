@@ -2,6 +2,7 @@
 #include <limits>
 #if WITH_CE_LANDFORM
 #include "Weather/CEWeatherFronts.h"
+#include "Weather/CEWeatherFrontalField.h"
 #include "Weather/CEWeatherGlobe.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -9,18 +10,25 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCEWeatherFrontTest,"Catalyst.Ecosystem.Weather
 bool FCEWeatherFrontTest::RunTest(const FString&)
 {
     const auto Mesh=FCEWeatherGlobeMesh::Make();TArray<FCEWeatherSample> Samples;Samples.SetNum(Mesh.Directions.Num());
-    for(auto& S:Samples){S.TemperatureC=12;S.PressureHpa=1013.25;S.Wind=FVector(5,0,0);}
+    TArray<FVector> Directions=Mesh.Directions;TArray<double> Moisture,DryWet;Moisture.Init(.9,Directions.Num());DryWet.Init(0,Directions.Num());TArray<int64> Uniforms;Uniforms.SetNumZeroed(52);Uniforms[0]=10000;Uniforms[15]=5000;Uniforms[48]=10000;
+    FCEWeatherFrontalField WetField,DryField;FString SpatialError;
+    if(!TestTrue(TEXT("Shared frontal field initializes"),WetField.Initialize(Directions,Mesh.Directions,Moisture,Moisture,Uniforms,SpatialError)&&DryField.Initialize(Directions,Mesh.Directions,DryWet,DryWet,Uniforms,SpatialError)))return false;
+    auto Apply=[&](bool IsWet){TArray<FCEWeatherSample> Result;const bool Ok=(IsWet?WetField:DryField).Evaluate(Samples,Result,SpatialError);TestTrue(TEXT("Front diagnostics use the shared GT frontal stage"),Ok);if(Ok)Samples=MoveTemp(Result);};
+    for(auto& S:Samples){S.TemperatureC=S.AirMassTemperatureC=12;S.PressureHpa=1013.25;S.Wind=FVector(5,0,0);}
+    Apply(false);
     TestTrue(TEXT("Uniform air has no manufactured front"),CEDiagnoseWeatherFronts(Mesh,Samples).IsEmpty());
-    for(int32 I=0;I<Samples.Num();++I)Samples[I].TemperatureC=30*Mesh.Directions[I].Z;
+    for(int32 I=0;I<Samples.Num();++I)Samples[I].TemperatureC=Samples[I].AirMassTemperatureC=30*Mesh.Directions[I].Z;
+    Apply(false);
     TestTrue(TEXT("Smooth latitude climate alone is not a front"),CEDiagnoseWeatherFronts(Mesh,Samples).IsEmpty());
     auto Fill=[&](FVector Axis,double Wind,double Centre,bool Wet)
     {
         for(int32 I=0;I<Samples.Num();++I)
         {
             const auto D=Mesh.Directions[I];const double Q=FVector::DotProduct(D,Axis)-Centre;
-            auto& S=Samples[I];S.TemperatureC=12*(2/(1+FMath::Exp(-2*Q/.12))-1);
+            auto& S=Samples[I];S=FCEWeatherSample();S.TemperatureC=S.AirMassTemperatureC=12*(2/(1+FMath::Exp(-2*Q/.12))-1);
             S.Wind=FVector::VectorPlaneProject(Axis,D)*Wind;S.Cloud=Wet?.9:0;S.RainMmHour=Wet?20:0;
         }
+        Apply(Wet);
     };
     Fill(FVector::XAxisVector,12,.1,true);const auto Cold=CEDiagnoseWeatherFronts(Mesh,Samples);
     if(!TestTrue(TEXT("A sharp air-mass boundary produces connected fronts"),!Cold.IsEmpty()))return false;
@@ -28,7 +36,7 @@ bool FCEWeatherFrontTest::RunTest(const FString&)
     {
         TestTrue(TEXT("Cold air advancing toward warmth is a cold front"),F.Kind==ECEWeatherFrontKind::Cold);
         Points+=F.Points.Num();
-        for(const auto& P:F.Points){TestTrue(TEXT("Thermal ridge is at the actual air-mass boundary"),FMath::Abs(P.Direction.X-.1)<.055);TestTrue(TEXT("Cloud/rain are sampled, not invented"),FMath::IsNearlyEqual(P.Cloud,.9)&&FMath::IsNearlyEqual(P.PrecipitationMmHour,20.));}
+        for(const auto& P:F.Points){TestTrue(TEXT("Thermal ridge is at the actual air-mass boundary"),FMath::Abs(P.Direction.X-.1)<.055);TestTrue(TEXT("Cloud/rain are sampled, not invented"),FMath::IsNearlyEqual(P.Cloud,.9)&&P.PrecipitationMmHour>=19.9999&&P.FrontalPrecipitationMmHour>=0);}
         FCEWeatherFrontPoint P;FVector T;TestTrue(TEXT("Front can be sampled at spherical arc distance"),F.Sample(F.ArcRadians.Last()*.37,P,T));
         TestTrue(TEXT("Front samples and tangent remain canonical"),P.Direction.IsUnit()&&FMath::Abs(FVector::DotProduct(P.Direction,T))<1.e-8);
     }
