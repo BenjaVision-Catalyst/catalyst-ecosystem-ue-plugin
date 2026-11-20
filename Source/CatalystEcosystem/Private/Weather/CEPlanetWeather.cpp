@@ -8,7 +8,7 @@ bool FCEPlanetWeather::Initialize(const FCEPlanetEcosystem& M,TConstArrayView<FV
     const double Begin=FPlatformTime::Seconds();if(!M.Validate(Error))return false;
     if(Positions.IsEmpty()||Positions.Num()>8192||Positions.Num()!=Normals.Num()||Radius<=0||!FMath::IsFinite(Radius)){Error=TEXT("Weather requires bounded accepted terrain samples");return false;}
     auto Plugin=IPluginManager::Get().FindPlugin(TEXT("CatalystEcosystem"));FString Json;
-    if(!Plugin||!FFileHelper::LoadFileToString(Json,*(Plugin->GetBaseDir()/TEXT("Resources/Weather/planetary-weather-4.json")))||!Field.Load(Json,Error))return false;
+    if(!Plugin||!FFileHelper::LoadFileToString(Json,*(Plugin->GetBaseDir()/TEXT("Resources/Weather/planetary-weather-5.json")))||!Field.Load(Json,Error))return false;
     Context=FCSFieldContext();Context.Seed=uint64(uint32(Seed))<<32|uint32(M.Weather.Seed);Context.Uniforms.SetNumZeroed(51);
     auto& U=Context.Uniforms;U[0]=Fixed(M.Weather.RegionalStrength);U[1]=Fixed(M.Weather.DaySeconds);U[2]=Fixed(M.Weather.CirculationSeconds);U[12]=Fixed(M.Weather.PrevailingWind);U[13]=Fixed(M.Weather.ReferencePressureHpa);U[14]=Fixed(M.Weather.WindResponse);U[15]=Fixed(M.Weather.Character);U[48]=M.Weather.bEnabled?10000:0;U[49]=Fixed(M.Weather.TravelMultiplier);U[50]=Fixed(M.Weather.TravelPhaseOffsetSeconds);
     const FVector Pole=M.Climate.PoleAxis.GetSafeNormal(),Axis=(FMath::Abs(Pole.Z)<.9?FVector::ZAxisVector:FVector::XAxisVector);
@@ -47,7 +47,7 @@ bool FCEPlanetWeather::Initialize(const FCEPlanetEcosystem& M,TConstArrayView<FV
 bool FCEPlanetWeather::Evaluate(int64 Seconds,TArray<FCEWeatherSample>& Samples,FString& Error)const
 {
     FCSFieldContext C=Context;C.Seconds=Seconds;TArray<TArray<int64>> Raw;if(!Field.Evaluate(C,Inputs,Raw,Error))return false;
-    Samples.Reset();Samples.Reserve(Raw.Num());for(const auto& R:Raw){if(R.Num()!=8){Error=TEXT("Weather channel schema mismatch");return false;}auto& S=Samples.AddDefaulted_GetRef();S.TemperatureC=double(R[0])/10000;S.Wind=FVector(R[1],R[2],R[3])/10000.;S.RainMmHour=double(R[4])/10000.;S.Dust=double(R[5])/10000.;S.Cloud=double(R[6])/10000.;S.PressureHpa=double(R[7])/10000.;}
+    Samples.Reset();Samples.Reserve(Raw.Num());for(const auto& R:Raw){if(R.Num()!=9){Error=TEXT("Weather channel schema mismatch");return false;}auto& S=Samples.AddDefaulted_GetRef();S.TemperatureC=double(R[0])/10000;S.Wind=FVector(R[1],R[2],R[3])/10000.;S.RainMmHour=double(R[4])/10000.;S.Dust=double(R[5])/10000.;S.Cloud=double(R[6])/10000.;S.PressureHpa=double(R[7])/10000.;S.SnowMmHour=double(R[8])/10000.;}
     return true;
 }
 

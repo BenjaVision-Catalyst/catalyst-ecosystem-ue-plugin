@@ -1,6 +1,28 @@
 #include "Weather/CEWeatherGlobe.h"
 #include "Weather/CEWeatherFronts.h"
 #if WITH_CE_LANDFORM
+FLinearColor CEWeatherPrecipitationColor(double Rain,double Snow)
+{
+    if(!FMath::IsFinite(Rain)||!FMath::IsFinite(Snow))return FLinearColor::Transparent;
+    Rain=FMath::Max(0.,Rain);Snow=FMath::Max(0.,Snow);const double Rate=Rain+Snow;
+    if(!FMath::IsFinite(Rate)||Rate<=0)return FLinearColor::Transparent;
+    constexpr double Stops[]={.1,1,5,15,40};
+    const FLinearColor Wet[]={{.015,.20,.55},{.015,.07,1},{.55,.012,.8},{.95,.07,.25},{1,.95,.01}};
+    const FLinearColor Ice[]={{.08,.4,.6},{.10,.65,1},{.45,.5,1},{.75,.68,1},{.98,1,1}};
+    int32 I=0;while(I<3&&Rate>Stops[I+1])++I;
+    const float T=FMath::Clamp((FMath::Loge(1+Rate)-FMath::Loge(1+Stops[I]))/(FMath::Loge(1+Stops[I+1])-FMath::Loge(1+Stops[I])),0.,1.);
+    auto Color=FMath::Lerp(FMath::Lerp(Wet[I],Wet[I+1],T),FMath::Lerp(Ice[I],Ice[I+1],T),float(Snow/Rate));
+    Color.A=FMath::SmoothStep(0.,.5,Rate)*(.55+.35*FMath::Clamp(FMath::Loge(1+Rate)/FMath::Loge(41.),0.,1.));
+    return Color;
+}
+namespace
+{
+FLinearColor Over(FLinearColor Front,FLinearColor Back)
+{
+    const float Alpha=Front.A+Back.A*(1-Front.A);if(Alpha<=0)return FLinearColor::Transparent;
+    auto Color=(Front*Front.A+Back*(Back.A*(1-Front.A)))/Alpha;Color.A=Alpha;return Color;
+}
+}
 bool CEWeatherTerrainInputsMatch(const FCLCompiledPlanetRecipe& A,const FCLCompiledPlanetRecipe& B)
 {
     if(!A.SourceRecipe||!B.SourceRecipe)return false;
@@ -20,15 +42,15 @@ TSharedPtr<const FCLPlanetBuilderOverlay> CEBuildWeatherGlobe(const FCEWeatherGl
         O->MeshIndices=M.Indices;
         for(int32 I=0;I<Samples.Num();++I)
         {
-            const auto& S=Samples[I];const double Value=Layer==0?(S.TemperatureC+40)/80.:(Layer==1?S.Wind.Length()/60.:(Layer==2?S.RainMmHour/50.:(S.PressureHpa/Reference-1)*1013.25/64.+.5));const float V=FMath::Clamp(Value,0.,1.);
+            const auto& S=Samples[I];const double Value=Layer==0?(S.TemperatureC+40)/80.:(Layer==1?S.Wind.Length()/60.:(Layer==2?S.PrecipitationMmHour()/50.:(S.PressureHpa/Reference-1)*1013.25/64.+.5));const float V=FMath::Clamp(Value,0.,1.);
             FLinearColor C;
             if(Layer==0)C=V<.5?FMath::Lerp(FLinearColor(.05,.15,.95),FLinearColor(.1,.8,.4),V*2):FMath::Lerp(FLinearColor(.1,.8,.4),FLinearColor(1,.08,.02),(V-.5)*2);
             else if(Layer==1)C=FMath::Lerp(FLinearColor(.02,.15,.5),FLinearColor(1,.85,.03),V);
-            else if(Layer==2)C=V<.5?FMath::Lerp(FLinearColor(.09,.12,.18),FLinearColor(.02,.65,1),V*2):FMath::Lerp(FLinearColor(.02,.65,1),FLinearColor(.9,.04,.9),(V-.5)*2);
+            else if(Layer==2)C=CEWeatherPrecipitationColor(S.RainMmHour,S.SnowMmHour);
             else C=V<.5?FMath::Lerp(FLinearColor(.01,.12,1),FLinearColor(.48,.015,.66),V*2):FMath::Lerp(FLinearColor(.48,.015,.66),FLinearColor(1,.5,.01),(V-.5)*2);
             // Keep the tint legible through the transparent shell without a grey midpoint.
-            auto HSV=C.LinearRGBToHSV();HSV.G=FMath::Lerp(HSV.G,1.f,.35f);C=HSV.HSVToLinearRGB();
-            C.A=.12f;O->MeshBodyMeters.Add(M.Directions[I]*HeatRadius);O->MeshColors.Add(C);
+            if(Layer!=2){auto HSV=C.LinearRGBToHSV();HSV.G=FMath::Lerp(HSV.G,1.f,.35f);C=HSV.HSVToLinearRGB();C.A=.12f;}
+            if(Layer==3)C=Over(CEWeatherPrecipitationColor(S.RainMmHour,S.SnowMmHour),C);O->MeshBodyMeters.Add(M.Directions[I]*HeatRadius);O->MeshColors.Add(C);
         }
     }
     if(Heatmap&&GroundPositions.Num()==Samples.Num())

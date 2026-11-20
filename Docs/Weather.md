@@ -92,7 +92,7 @@ weather seed without changing the planet/biome seed.
 ## Model and ownership
 
 Portable `CEPlanetWeatherModel` in CatalystEcosystem authors the equations through
-Simulator's `CSFieldBuilder`. `Resources/Weather/planetary-weather-4.json` is its
+Simulator's `CSFieldBuilder`. `Resources/Weather/planetary-weather-5.json` is its
 GT-generated immutable `analytic-field-1` program. The Simulator plugin executes
 that generic profile. The native Ecosystem adapter supplies frozen terrain,
 climate/biome inputs, seed, event definitions and channel/presentation mapping;
@@ -260,4 +260,33 @@ anchor is persisted with the settings, including Undo/Redo and export. Character
 and multiplier edits retain the preview clock. Predictions/history are deterministic
 queries for the current input revision; they do not journal earlier authoring edits.
 The runtime adapter maps the multiplier and anchor to uniforms 49/50 of the
-GT-authored v4 model; no second clock or weather solver is introduced.
+GT-authored v5 model; no second clock or weather solver is introduced.
+
+## Rain and snow intensity
+
+The default Weather view composites precipitation over the faint pressure tint,
+on the same Overlay shell and behind isobars/front symbols. Dry precipitation is
+transparent. Rain follows the reference radar colours: blue through purple and
+pink to bright yellow at the strongest rates. Snow uses cyan, pale violet and
+icy white; mixed precipitation blends both palettes. The small static legend
+identifies the two colour scales. Presentation stops are 0.1, 1, 5, 15 and 40+
+mm/hour of water equivalent, with continuous logarithmic colour interpolation
+and a smooth opacity fade near zero. These are game display stops, not official
+meteorological categories. No colour noise or precipitation is invented by the UI.
+
+The v5 GT model partitions the existing total precipitation into liquid rain and
+snowfall water equivalent. A smooth surface-temperature blend runs from all snow
+at -1 C to all rain at +1 C. This is a lightweight phase approximation; vertical
+air temperatures, wet-bulb temperature, melting/refreezing layers and snow depth
+or accumulation are not modelled. Snow is not silently treated as snow-depth
+mm/hour. Computing snow first and subtracting it from total precipitation retains
+exact fixed-point water conservation. Temperature, pressure, wind, cloud, dust,
+travel and event/solar timing retain their previous output values.
+
+The nine output channels retain the earlier ordering and append `snowMmHour`;
+`rainMmHour` now means liquid rain. The native adapter exposes both rates and
+`PrecipitationMmHour()` for their sum. Front diagnostics use the total. The phase
+split adds seven graph nodes and no timesteps. The overlay uses the existing
+single triangle shell/material, with no extra draw layer, texture, mesh or render
+asset. Guide movement, AA ink and ground-temperature layering stay on the shared
+Planet Designer path.

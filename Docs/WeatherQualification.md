@@ -1,5 +1,40 @@
 # Weather qualification
 
+## Rain/snow intensity — 21 November 2026
+
+UE 5.8.4, macOS arm64, native Metal: 16 focused tests pass, with no automation
+warnings, failures or skipped cases. All 14 GT weather tests pass. The v5 program
+has 2087 nodes (seven added) and nine outputs. All 240 GT/native point cases match
+exactly, including 115 cases with rain and 68 with snow. Against the previous v4
+vectors, rain + snow conserves every fixed-point precipitation unit and all seven
+other channels retain their exact values.
+
+The phase fixture checks positive precipitation on an entirely warm and an
+entirely cold planet, nonnegative rates and repeatable forecasts. GT checks
+conservation and smooth phase progression through freezing, dry output, disable
+and replay. The surface-temperature split is an inexpensive game approximation;
+wet-bulb/vertical column physics and snow depth/accumulation remain outside scope.
+
+The editor fixture publishes synthetic dry and rain/snow fields on the same
+native shell, camera and lighting, with foreground isobars retained. Metal
+readback identifies 284964 changed yellow rain pixels and 534606 changed icy-white
+snow pixels. Palette tests retain dry transparency, continuous thresholds,
+mixed-phase intensity, guide repositioning, mesh bounds and unchanged ground
+swatches. Front regression compares matching precipitation inputs and confirms
+fronts themselves introduce no cloud bands. The default Weather tab has a small
+static Rain/Snow legend and continues to animate automatically.
+
+GT source was compiled/exported through MCP into an independent checkout; both
+class definitions and all 29 methods match the live image. The portable component
+is `afff257`. Native runs retained one independent Runtime owner through lease
+release, restored original registries and positively joined cleanup. The GT image
+remains open. Saved user planet/profile/map hashes are unchanged by qualification.
+
+Evidence: `Saved/WeatherPrecipitationQualification/index.json`, its matching log,
+`Saved/EcosystemQualification/weather-precipitation-{dry,intensity}.png`,
+`Saved/EcosystemQualification/weather-character-row.png`, and workspace
+`recovery/weather-precip-20261121/native-2/`.
+
 ## Travel multiplier — 21 November 2026
 
 UE 5.8.4, macOS arm64, native Metal: 14 focused tests pass with no automation

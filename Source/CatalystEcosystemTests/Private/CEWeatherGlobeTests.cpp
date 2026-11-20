@@ -129,4 +129,34 @@ bool FCEDayNightTest::RunTest(const FString&)
     TestTrue(TEXT("Hiding the heatmap removes temperature swatches"),Hidden->BodyMeters.IsEmpty()&&Hidden->MeshBodyMeters.IsEmpty());
     return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCEPrecipitationOverlayTest,"Catalyst.Ecosystem.Weather.PrecipitationOverlay",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FCEPrecipitationOverlayTest::RunTest(const FString&)
+{
+    TestEqual(TEXT("Dry precipitation is transparent"),CEWeatherPrecipitationColor(0,0).A,0.f);
+    TestTrue(TEXT("Drizzle fades in smoothly from zero"),CEWeatherPrecipitationColor(.00001,0).A<.0001&&CEWeatherPrecipitationColor(.1,0).A<CEWeatherPrecipitationColor(1,0).A);
+    const auto Blue=CEWeatherPrecipitationColor(1,0),Purple=CEWeatherPrecipitationColor(5,0),Yellow=CEWeatherPrecipitationColor(40,0),Snow=CEWeatherPrecipitationColor(0,40);
+    TestTrue(TEXT("Reference rain palette progresses blue, purple, yellow"),Blue.B>.9&&Blue.R<.1&&Purple.R>.4&&Purple.B>.7&&Purple.G<.1&&Yellow.R>.9&&Yellow.G>.9&&Yellow.B<.1);
+    TestTrue(TEXT("Heavy snowfall is icy white, distinct from yellow rain"),Snow.R>.9&&Snow.G>.9&&Snow.B>.9&&!Snow.Equals(Yellow,.1));
+    for(double Rate:{.1,1.,5.,15.,40.})TestTrue(TEXT("Intensity colour and opacity have no threshold jumps"),CEWeatherPrecipitationColor(Rate-.00001,0).Equals(CEWeatherPrecipitationColor(Rate+.00001,0),.001));
+    const auto Mixed=CEWeatherPrecipitationColor(3,3),Liquid=CEWeatherPrecipitationColor(6,0),Solid=CEWeatherPrecipitationColor(0,6);
+    TestTrue(TEXT("Mixed phase blends colour without increasing intensity"),Mixed.Equals(FMath::Lerp(Liquid,Solid,.5f),.00001));
+    const auto Mesh=FCEWeatherGlobeMesh::Make();TArray<FCEWeatherSample> Samples;TArray<FVector> Ground;
+    for(const auto& D:Mesh.Directions){auto& S=Samples.AddDefaulted_GetRef();S.PressureHpa=1013.25+12*D.Z;S.Wind=FVector::CrossProduct(FVector::ZAxisVector,D)*6;Ground.Add(D*(800+50*D.Z));}
+    const auto Dry=CEBuildWeatherGlobe(Mesh,Samples,1500,1013.25,3,true,true,true,false,Ground);
+    for(int32 I=0;I<Samples.Num();++I){if(Mesh.Directions[I].X>.3)Samples[I].RainMmHour=40;else if(Mesh.Directions[I].X<-.3)Samples[I].SnowMmHour=40;}
+    const auto Wet=CEBuildWeatherGlobe(Mesh,Samples,1500,1013.25,3,true,true,true,false,Ground);
+    TestEqual(TEXT("Precipitation reuses the existing heatmap shell vertices"),Wet->MeshBodyMeters,Dry->MeshBodyMeters);TestEqual(TEXT("Precipitation adds no triangles"),Wet->MeshIndices,Dry->MeshIndices);
+    TestEqual(TEXT("Ground temperature layer retains its anchors"),Wet->BodyMeters,Dry->BodyMeters);TestEqual(TEXT("Ground temperature data is untouched"),Wet->Colors,Dry->Colors);
+    TestEqual(TEXT("Isobars remain above the combined heatmap"),Wet->Segments.Num(),Dry->Segments.Num());
+    for(int32 I=0;I<Samples.Num();++I)
+    {
+        if(Samples[I].PrecipitationMmHour()==0)TestTrue(TEXT("Dry cells retain the transparent pressure tint"),Wet->MeshColors[I]==Dry->MeshColors[I]);
+        else TestTrue(TEXT("Heavy precipitation is legible over the pressure tint"),Wet->MeshColors[I].A>.85&&Wet->MeshColors[I].A<=1);
+    }
+    const auto Moved=CEBuildWeatherGlobe(Mesh,Samples,3000,1013.25,3,true,true,true,false,Ground);
+    TestEqual(TEXT("Moving Overlay preserves intensity colours"),Moved->MeshColors,Wet->MeshColors);
+    for(int32 I=0;I<Wet->MeshBodyMeters.Num();++I)TestTrue(TEXT("Precipitation follows the movable guide"),Moved->MeshBodyMeters[I].Equals(Wet->MeshBodyMeters[I]*2,1.e-6));
+    return true;
+}
 #endif

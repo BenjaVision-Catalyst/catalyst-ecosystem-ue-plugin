@@ -2,6 +2,7 @@
 #if WITH_CE_LANDFORM
 #include "PlanetBuilder/CLPlanetBuilderExtensions.h"
 #include "Model/CEPlanetEcosystem.h"
+#include "Weather/CEWeatherGlobe.h"
 #include "Model/CEPlanetEcosystemFactory.h"
 #include "Engine/Selection.h"
 #include "Widgets/IToolTip.h"
@@ -81,7 +82,7 @@ struct FToolkitReview : IAutomationLatentCommand
     FAutomationTestBase* Test;
     TStrongObjectPtr<UCLPlanetRecipeAsset> Planet{NewObject<UCLPlanetRecipeAsset>()};
     TStrongObjectPtr<UCEPlanetEcosystemAsset> Profile{NewObject<UCEPlanetEcosystemAsset>()};
-    struct FPreviewMetrics{int32 Samples=-1,FlowPaths=0,Arrowheads=0,Segments=0,Labels=0;double MeshRadius=0;bool PlainLabels=true,FreezeWeather=false;TArray<FLinearColor> Colors;TSharedPtr<const FCLPlanetBuilderOverlay> LastOverlay,FrozenOverlay;};
+    struct FPreviewMetrics{int32 Samples=-1,FlowPaths=0,Arrowheads=0,Segments=0,Labels=0;double MeshRadius=0;bool PlainLabels=true,FreezeWeather=false;TArray<FLinearColor> Colors;TSharedPtr<const FCLPlanetBuilderOverlay> LastOverlay,FrozenOverlay;TFunction<void(TSharedPtr<const FCLPlanetBuilderOverlay>)> FixturePublish;};
     TSharedRef<FPreviewMetrics> Metrics=MakeShared<FPreviewMetrics>();
     TOptional<FCLPlanetBuilderProvider> OriginalProvider;
     TSharedPtr<SWindow> Window;int32 Stage=0,FullSamples=0;double Start=FPlatformTime::Seconds(),ReadyAt=0,CaptureReady=0;
@@ -89,7 +90,7 @@ struct FToolkitReview : IAutomationLatentCommand
     TArray<FLinearColor> WeatherNowColors;
     FCEWeatherSettings WeatherBeforePreview;
     double TravelMultiplierBefore=0;FVector TravelSunBefore;
-    TArray<FColor> FrozenFlowPixels;FIntPoint FrozenFlowSize;
+    TArray<FColor> FrozenFlowPixels,PrecipitationDryPixels;FIntPoint FrozenFlowSize,PrecipitationDrySize;
     explicit FToolkitReview(FAutomationTestBase* T):Test(T)
     {
         Planet->Recipe=FCLPlanetCompiler::BasePlanet();Planet->Recipe.Name=TEXT("Ecosystem globe qualification");Planet->Recipe.RadiusMeters=100;for(auto& G:Planet->Recipe.RadialGuides.Guides)if(G.Name==TEXT("Overlay"))G.NormalizedHeight=.96;
@@ -100,7 +101,7 @@ struct FToolkitReview : IAutomationLatentCommand
             OriginalProvider=Provider;auto Observed=Provider;const auto Create=Provider.Create;const auto View=Metrics;
             Observed.Create=[Create,View](FCLPlanetBuilderContext Context)
             {
-                const auto Publish=Context.PublishOverlay;
+                const auto Publish=Context.PublishOverlay;View->FixturePublish=Publish;
                 Context.PublishOverlay=[Publish,View](auto Overlay)
                 {
                     if(View->FreezeWeather&&Overlay&&!Overlay->Flows.IsEmpty()){Publish(View->FrozenOverlay);return;}
@@ -149,6 +150,20 @@ struct FToolkitReview : IAutomationLatentCommand
                     }
                 Test->TestTrue(TEXT("Rendered arrowheads march with the weather payload held fixed"),Changed>50);
                 Test->AddInfo(FString::Printf(TEXT("Marching heads change %d white globe pixels with fixed fields"),Changed));FrozenFlowPixels.Reset();
+            }
+            if(FString(Name)==TEXT("weather-precipitation-dry")){PrecipitationDryPixels=Pixels;PrecipitationDrySize=FIntPoint(Size.X,Size.Y);}
+            if(FString(Name)==TEXT("weather-precipitation-intensity"))
+            {
+                int32 RainPixels=0,SnowPixels=0;
+                if(PrecipitationDryPixels.Num()==Pixels.Num()&&PrecipitationDrySize==FIntPoint(Size.X,Size.Y))
+                    for(int32 Y=Size.Y/10;Y<Size.Y*9/10;++Y)for(int32 X=Size.X/2;X<Size.X;++X)
+                    {
+                        const int32 I=Y*Size.X+X;const auto A=PrecipitationDryPixels[I],B=Pixels[I];
+                        if(FMath::Abs(int32(A.R)-B.R)+FMath::Abs(int32(A.G)-B.G)+FMath::Abs(int32(A.B)-B.B)<40)continue;
+                        RainPixels+=B.R>180&&B.G>160&&B.B<120;SnowPixels+=B.R>180&&B.G>180&&B.B>200;
+                    }
+                Test->TestTrue(TEXT("Native heatmap renders intense rain yellow"),RainPixels>100);Test->TestTrue(TEXT("Native heatmap renders intense snow icy white"),SnowPixels>100);
+                Test->AddInfo(FString::Printf(TEXT("Precipitation changes %d yellow rain pixels and %d icy snow pixels against the same dry shell"),RainPixels,SnowPixels));PrecipitationDryPixels.Reset();
             }
             TArray64<uint8> PNG;FImageUtils::PNGCompressImageArray(Size.X,Size.Y,Pixels,PNG);const auto Folder=FPaths::ProjectSavedDir()/TEXT("EcosystemQualification");IFileManager::Get().MakeDirectory(*Folder,true);FFileHelper::SaveArrayToFile(PNG,*(Folder/(FString(Name)+TEXT(".png"))));}
     }
@@ -222,6 +237,7 @@ struct FToolkitReview : IAutomationLatentCommand
             if(FPlatformTime::Seconds()-ReadyAt<1||Metrics->Colors==WeatherNowColors)return false;
             Test->TestFalse(TEXT("Weather underlying values are collapsed by default"),VisibleText(Window.ToSharedRef(),TEXT("Reference pressure (hPa)")));
             Test->TestFalse(TEXT("Travel multiplier is advanced, absent from compact row"),VisibleText(Window.ToSharedRef(),TEXT("Weather travel multiplier")));
+            Test->TestTrue(TEXT("Weather includes separate rain/snow intensity legends"),Text.Contains(TEXT("Rain"))&&Text.Contains(TEXT("Snow"))&&Text.Contains(TEXT("Precipitation")));
             Test->TestTrue(TEXT("Weather has the compact Character row"),WeatherControl(Window.ToSharedRef(),TEXT("SSlider"),TEXT("Weather character:")).IsValid());
             Test->TestTrue(TEXT("Weather automatically advances without a Play action"),Metrics->Colors!=WeatherNowColors);
             Capture(TEXT("weather-running-later"));Metrics->FrozenOverlay=Metrics->LastOverlay;Metrics->FreezeWeather=true;ReadyAt=FPlatformTime::Seconds();Stage=8;return false;
@@ -327,6 +343,29 @@ struct FToolkitReview : IAutomationLatentCommand
         {
             if(Metrics->Samples<=0||!Settled())return false;
             Test->TestTrue(TEXT("Re-enabled weather restores the animated overlay"),Profile->Ecosystem.Weather.bEnabled&&Metrics->FlowPaths>0);Capture(TEXT("weather-character-row"));
+            const auto Mesh=FCEWeatherGlobeMesh::Make();TArray<FCEWeatherSample> Samples;
+            for(const auto& D:Mesh.Directions){auto& Sample=Samples.AddDefaulted_GetRef();Sample.PressureHpa=1013.25+12*D.Z+6*D.X*D.Y;Sample.Wind=FVector::CrossProduct(FVector::ZAxisVector,D)*6;}
+            Metrics->FrozenOverlay=CEBuildWeatherGlobe(Mesh,Samples,Planet->Recipe.RadiusMeters,1013.25,3,true,true,true,false);
+            Metrics->FreezeWeather=true;Metrics->FixturePublish(Metrics->FrozenOverlay);ReadyAt=FPlatformTime::Seconds();Stage=201;return false;
+        }
+        if(Stage==201)
+        {
+            if(FPlatformTime::Seconds()-ReadyAt<.5||!Settled())return false;Capture(TEXT("weather-precipitation-dry"));
+            auto View=PlanetViewport(Window.ToSharedRef());if(!Test->TestTrue(TEXT("Precipitation uses the native planet viewport"),View.IsValid()&&View->GetViewportClient()))return Close();
+            const auto Mesh=FCEWeatherGlobeMesh::Make();TArray<FCEWeatherSample> Samples;
+            const auto Eye=View->GetViewportClient()->GetViewLocation().GetSafeNormal(),Right=FRotationMatrix(View->GetViewportClient()->GetViewRotation()).GetUnitAxis(EAxis::Y);
+            const auto RainCenter=(Eye-Right*.35).GetSafeNormal(),SnowCenter=(Eye+Right*.35).GetSafeNormal();
+            for(const auto& D:Mesh.Directions)
+            {
+                auto& Sample=Samples.AddDefaulted_GetRef();Sample.PressureHpa=1013.25+12*D.Z+6*D.X*D.Y;Sample.Wind=FVector::CrossProduct(FVector::ZAxisVector,D)*6;
+                Sample.RainMmHour=50*FMath::Square(FMath::Clamp((FVector::DotProduct(D,RainCenter)-.72)/.28,0.,1.));
+                Sample.SnowMmHour=50*FMath::Square(FMath::Clamp((FVector::DotProduct(D,SnowCenter)-.72)/.28,0.,1.));
+            }
+            Metrics->FrozenOverlay=CEBuildWeatherGlobe(Mesh,Samples,Planet->Recipe.RadiusMeters,1013.25,3,true,true,true,false);Metrics->FixturePublish(Metrics->FrozenOverlay);ReadyAt=FPlatformTime::Seconds();Stage=202;return false;
+        }
+        if(Stage==202)
+        {
+            if(FPlatformTime::Seconds()-ReadyAt<.5||!Settled())return false;Capture(TEXT("weather-precipitation-intensity"));Metrics->FreezeWeather=false;Metrics->FrozenOverlay.Reset();
             if(!Toggle(TEXT("Climate")))return Close();Stage=12;return false;
         }
         if(Stage==12&&Metrics->Samples==FullSamples)return Close();

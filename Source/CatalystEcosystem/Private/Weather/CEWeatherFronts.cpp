@@ -5,7 +5,7 @@ FCEWeatherFrontPoint Blend(const FCEWeatherFrontPoint& A,const FCEWeatherFrontPo
 {
     FCEWeatherFrontPoint P;P.Direction=FMath::Lerp(A.Direction,B.Direction,F).GetSafeNormal();
     P.Warmward=FVector::VectorPlaneProject(FMath::Lerp(A.Warmward,B.Warmward,F),P.Direction).GetSafeNormal();
-    P.Strength=FMath::Lerp(A.Strength,B.Strength,F);P.Cloud=FMath::Lerp(A.Cloud,B.Cloud,F);P.RainMmHour=FMath::Lerp(A.RainMmHour,B.RainMmHour,F);
+    P.Strength=FMath::Lerp(A.Strength,B.Strength,F);P.Cloud=FMath::Lerp(A.Cloud,B.Cloud,F);P.PrecipitationMmHour=FMath::Lerp(A.PrecipitationMmHour,B.PrecipitationMmHour,F);
     P.CrossWindMetersPerSecond=FMath::Lerp(A.CrossWindMetersPerSecond,B.CrossWindMetersPerSecond,F);return P;
 }
 }
@@ -37,7 +37,7 @@ TArray<FCEWeatherFront> CEDiagnoseWeatherFronts(const FCEWeatherGlobeMesh& M,TCo
     TArray<FCEWeatherFront> Fronts;const int32 N=M.Directions.Num();
     if(N<3||N>8192||Samples.Num()!=N||M.Indices.Num()%3||M.Indices.Num()>49152)return Fronts;
     for(int32 I:M.Indices)if(I<0||I>=N)return Fronts;
-    for(int32 I=0;I<N;++I)if(M.Directions[I].ContainsNaN()||!FMath::IsFinite(Samples[I].TemperatureC)||Samples[I].Wind.ContainsNaN()||!FMath::IsFinite(Samples[I].Cloud)||!FMath::IsFinite(Samples[I].RainMmHour))return Fronts;
+    for(int32 I=0;I<N;++I)if(M.Directions[I].ContainsNaN()||!FMath::IsFinite(Samples[I].TemperatureC)||Samples[I].Wind.ContainsNaN()||!FMath::IsFinite(Samples[I].Cloud)||!FMath::IsFinite(Samples[I].PrecipitationMmHour()))return Fronts;
     TArray<TArray<int32>> Neighbours;Neighbours.SetNum(N);
     for(int32 I=0;I<M.Indices.Num();I+=3)for(int32 E=0;E<3;++E)
     {const int32 A=M.Indices[I+E],B=M.Indices[I+(E+1)%3];Neighbours[A].AddUnique(B);Neighbours[B].AddUnique(A);}
@@ -97,7 +97,7 @@ TArray<FCEWeatherFront> CEDiagnoseWeatherFronts(const FCEWeatherGlobeMesh& M,TCo
                 const double Sharp=-FVector::DotProduct(FMath::Lerp(AcrossGradient[A],AcrossGradient[B],F),P.Warmward);
                 auto Ease=[](double V){V=FMath::Clamp(V,0.,1.);return V*V*(3-2*V);};
                 P.Strength=Ease((ThermalStrength-8)/8)*Ease((Sharp/FMath::Max(.001,ThermalStrength)-4)/4);
-                P.Cloud=FMath::Clamp(FMath::Lerp(Samples[A].Cloud,Samples[B].Cloud,F),0.,1.);P.RainMmHour=FMath::Clamp(FMath::Lerp(Samples[A].RainMmHour,Samples[B].RainMmHour,F),0.,100.);
+                P.Cloud=FMath::Clamp(FMath::Lerp(Samples[A].Cloud,Samples[B].Cloud,F),0.,1.);P.PrecipitationMmHour=FMath::Clamp(FMath::Lerp(Samples[A].PrecipitationMmHour(),Samples[B].PrecipitationMmHour(),F),0.,100.);
                 Id=Nodes.Add(MoveTemp(Node));Ids.Add(Key,Id);
             }
             bool Duplicate=false;for(int32 H=0;H<Count;++H)Duplicate|=Hits[H]==Id;if(Duplicate)continue;

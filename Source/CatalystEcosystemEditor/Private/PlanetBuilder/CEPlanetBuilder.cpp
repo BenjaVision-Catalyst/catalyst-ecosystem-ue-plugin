@@ -195,13 +195,33 @@ private:
         if(Stop)Stop->Store(true);
         Context.PublishOverlay(nullptr);
     }
+    TSharedRef<SWidget> PrecipitationLegend()
+    {
+        auto Row=[](bool Snow)
+        {
+            TSharedRef<SHorizontalBox> Content=SNew(SHorizontalBox)
+                +SHorizontalBox::Slot().AutoWidth()[SNew(SBox).WidthOverride(44)[SNew(STextBlock).Text(FText::FromString(Snow?TEXT("Snow"):TEXT("Rain"))).Font(FAppStyle::GetFontStyle("SmallFont"))]];
+            for(double Rate:{.1,1.,5.,15.,40.})
+            {
+                auto Color=CEWeatherPrecipitationColor(Snow?0:Rate,Snow?Rate:0);Color.A=1;
+                Content->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(0,0,2,0)
+                    [SNew(SBox).WidthOverride(32).HeightOverride(7)[SNew(SBorder).BorderImage(FAppStyle::GetBrush("WhiteBrush")).BorderBackgroundColor(Color).Padding(0)]];
+            }
+            return Content;
+        };
+        return SNew(SVerticalBox).ToolTipText(FText::FromString(TEXT("Intensity stops: 0.1, 1, 5, 15 and 40+ mm/h water equivalent. Snow uses melted-water equivalent, not accumulated snow depth. Mixed rain and snow blend the palettes.")))
+            +SVerticalBox::Slot().AutoHeight().Padding(0,0,0,3)[SNew(STextBlock).Text(FText::FromString(TEXT("Precipitation · light → extreme"))).Font(FAppStyle::GetFontStyle("SmallFont")).ColorAndOpacity(FLinearColor(.65,.65,.65))]
+            +SVerticalBox::Slot().AutoHeight()[Row(false)]
+            +SVerticalBox::Slot().AutoHeight().Padding(0,3,0,0)[Row(true)];
+    }
     TSharedRef<SWidget> WeatherPage()
     {
         return SNew(SVerticalBox)
             +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(STextBlock).AutoWrapText(true)
                 .Visibility_Lambda([this]{return WeatherError.IsEmpty()?EVisibility::Collapsed:EVisibility::Visible;})
                 .Text_Lambda([this]{return FText::FromString(WeatherError);})]
-            +SVerticalBox::Slot().AutoHeight().Padding(4)[SAssignNew(WeatherDetailsBox,SVerticalBox)];
+            +SVerticalBox::Slot().AutoHeight().Padding(4)[SAssignNew(WeatherDetailsBox,SVerticalBox)]
+            +SVerticalBox::Slot().AutoHeight().Padding(10,4)[PrecipitationLegend()];
     }
     void ResetWeather()
     {

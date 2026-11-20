@@ -7,7 +7,7 @@ struct FCEWeatherFrontPoint
     FVector Direction=FVector::ZeroVector;
     /** Tangent pointing from colder to warmer air. */
     FVector Warmward=FVector::ZeroVector;
-    double Cloud=0,RainMmHour=0,CrossWindMetersPerSecond=0;
+    double Cloud=0,PrecipitationMmHour=0,CrossWindMetersPerSecond=0;
     /** Continuous 0..1 confidence of a thermal-gradient ridge; queryable by game code. */
     double Strength=0;
 };
