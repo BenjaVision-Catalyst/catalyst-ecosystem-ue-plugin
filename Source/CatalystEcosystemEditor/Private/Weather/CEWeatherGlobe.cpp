@@ -37,7 +37,7 @@ TSharedPtr<const FCLPlanetBuilderOverlay> CEBuildWeatherGlobe(const FCEWeatherGl
         const int32 Base=O->MeshBodyMeters.Num();for(int32 I=0;I<Samples.Num();++I)
         {
             const double T=FMath::Clamp((Samples[I].TemperatureC+30)/70.,0.,1.);
-            FLinearColor C=T<.5?FMath::Lerp(FLinearColor(.025,.10,.85),FLinearColor(.5,.015,.65),float(T*2)):FMath::Lerp(FLinearColor(.5,.015,.65),FLinearColor(1,.16,.015),float((T-.5)*2));C.A=.55f;
+            FLinearColor C=T<.5?FMath::Lerp(FLinearColor(.025,.10,.85),FLinearColor(.5,.015,.65),float(T*2)):FMath::Lerp(FLinearColor(.5,.015,.65),FLinearColor(1,.16,.015),float((T-.5)*2));C.A=.65f;
             O->MeshBodyMeters.Add(GroundPositions[I]+GroundPositions[I].GetSafeNormal()*FMath::Max(.1,GroundPositions[I].Length()*.002));O->MeshColors.Add(C);
         }
         for(int32 I:M.Indices)O->MeshIndices.Add(Base+I);

@@ -162,9 +162,12 @@ The model has 2075 scalar nodes (generic cap 4096), eight background systems and
 four authored slots. At most 16,384 combined pressure/front segments, 256 closed flow paths,
 2048 arrowheads (at most 128 per loop) and 16 H/L labels are generated. Paths join
 through shared edge/vertex identities and use spherical arc length, including the
-closing edge. The native scene retains one bounded mesh (up to 16,384 vertices / 98,304 indices),
-combining the transparent pressure shell, ground temperature tint and filled front
-symbols. Pressure uses a blue–purple–orange palette, with no green midpoint.
+closing edge. The native scene separates the projected ground map from the atmospheric graphics,
+sharing a payload bounded to 16,384 vertices / 98,304 indices in total. The ground
+layer uses standard lights with exposure-compensated data colours and sampled
+terrain normals. It draws over finer native relief, behind the pressure/front
+graphics, with an antialiased camera-facing hemisphere mask. This avoids depth
+fighting without raising the map to an invented terrain envelope. Pressure uses a blue–purple–orange palette, with no green midpoint.
 Fronts use dark blue/red/purple strokes and filled triangles/semicircles with
 feathered edges; cloud/rain bands do not tint the heatmap.
 Weather evaluations coalesce to at most five per real second. Per-frame work advances persistent visual arrow sites and front opacity; it
