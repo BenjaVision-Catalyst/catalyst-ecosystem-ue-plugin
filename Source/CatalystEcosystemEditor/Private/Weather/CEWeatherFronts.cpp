@@ -8,6 +8,7 @@ FLinearColor FrontColor(ECEWeatherFrontKind K)
 void CEAppendWeatherFrontOverlay(const FCEWeatherGlobeMesh& M,TConstArrayView<FCEWeatherFront> Fronts,double Radius,FCLPlanetBuilderOverlay& O)
 {
     if(Radius<=0||!FMath::IsFinite(Radius))return;
+    const int32 FirstTriangle=O.MeshIndices.Num()/3;
     int32 Symbols=0;
     auto Line=[&](FVector A,FVector B,FLinearColor C,float Width=2.5f)
     {if(O.Segments.Num()<16384)O.Segments.Add({A.GetSafeNormal()*Radius,B.GetSafeNormal()*Radius,C,Width});};
@@ -48,6 +49,7 @@ void CEAppendWeatherFrontOverlay(const FCEWeatherGlobeMesh& M,TConstArrayView<FC
             }
         }
     }
+    O.ForegroundTriangleStart=FirstTriangle;O.ForegroundTriangleCount=O.MeshIndices.Num()/3-FirstTriangle;
 }
 void FCEWeatherFrontPresentation::SetFronts(TArray<FCEWeatherFront> Fronts)
 {

@@ -71,7 +71,7 @@ TSharedPtr<const FCLPlanetBuilderOverlay> CEBuildWeatherGlobe(const FCEWeatherGl
             if(Count!=2||(Nodes[Hits[0]].Direction-Nodes[Hits[1]].Direction).IsNearlyZero(1.e-12))continue;
             const uint64 Key=(uint64(FMath::Min(Hits[0],Hits[1]))<<32)|uint32(FMath::Max(Hits[0],Hits[1]));if(LinkIds.Contains(Key))continue;LinkIds.Add(Key);
             const int32 Link=Links.Add({Hits[0],Hits[1]});Nodes[Hits[0]].Links.Add(Link);Nodes[Hits[1]].Links.Add(Link);--EdgeBudget;
-            if(Pressure)O->Segments.Add({Nodes[Hits[0]].Direction*Radius,Nodes[Hits[1]].Direction*Radius,FLinearColor(.92,.96,1),1.25f});
+            if(Pressure)O->Segments.Add({Nodes[Hits[0]].Direction*Radius,Nodes[Hits[1]].Direction*Radius,FLinearColor(.92,.96,1),1.875f,.25f});
         }
         if(!Wind)continue;
         int32 Loop=0;

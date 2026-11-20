@@ -163,12 +163,21 @@ four authored slots. At most 16,384 combined pressure/front segments, 256 closed
 2048 arrowheads (at most 128 per loop) and 16 H/L labels are generated. Paths join
 through shared edge/vertex identities and use spherical arc length, including the
 closing edge. Atmospheric graphics share a payload bounded to 16,384 vertices /
-98,304 indices. Ground temperature uses the same unlit point swatches as the
+98,304 indices. Ground temperature uses the same unlit square swatches as the
 biome preview: exact sampled composed-surface positions, the same default pixel
 size and hemisphere/depth culling. Swatch colours represent temperature directly;
 sunlight, night fill and cast shadows do not alter them. The terrain beneath keeps
-its standard day/night lighting and shadows. No separate temperature mesh or
-terrain material is generated. Pressure uses a blue–purple–orange palette, with no green midpoint.
+its standard day/night lighting and shadows. Shared camera-facing swatches use an opaque unlit scene component, before
+atmospheric translucency; camera changes rebuild at most 8192 squares. No
+temperature-specific terrain material is generated. Pressure uses a blue–purple–orange palette, with no green midpoint.
+Isobars use 1.875-pixel cores and marching heads use 2.7-pixel cores (1.5 times
+their initial widths), each with a 0.25-pixel black rim per side. Analytic edge
+coverage applies to both the core and rim and shares each arrow's fade. Isobars,
+arrows and filled front symbols use a depth-independent scene ink layer above unlit
+ground swatches; the pressure heatmap stays in the scene behind these graphics.
+Ink uses standard world translucency with depth testing disabled. The native
+translucent foreground depth-priority group did not draw these view meshes in
+the Mac qualification; ordinary editor overlay points would cover scene ink.
 Fronts use dark blue/red/purple strokes and filled triangles/semicircles with
 feathered edges; cloud/rain bands do not tint the heatmap.
 Weather evaluations coalesce to at most five per real second. Per-frame work advances persistent visual arrow sites and front opacity; it

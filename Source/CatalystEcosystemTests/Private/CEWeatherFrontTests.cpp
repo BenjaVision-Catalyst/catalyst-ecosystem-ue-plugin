@@ -48,6 +48,8 @@ bool FCEWeatherFrontTest::RunTest(const FString&)
     const auto Plain=CEBuildWeatherGlobe(Mesh,Samples,1500,1013.25,3,false,false,true,false);
     for(int32 I=0;I<Samples.Num();++I)TestTrue(TEXT("Fronts never tint cloud bands into the heatmap"),Overlay->MeshColors[I]==Plain->MeshColors[I]&&Dry->MeshColors[I]==Plain->MeshColors[I]);
     TestTrue(TEXT("Front triangles and semicircles have filled geometry"),Overlay->MeshIndices.Num()>Plain->MeshIndices.Num()&&Dry->MeshIndices.Num()>Plain->MeshIndices.Num());
+    TestEqual(TEXT("Only front symbols occupy the foreground triangle range"),Overlay->ForegroundTriangleStart,Plain->MeshIndices.Num()/3);
+    TestEqual(TEXT("All filled front symbols are above ground swatches"),Overlay->ForegroundTriangleCount,(Overlay->MeshIndices.Num()-Plain->MeshIndices.Num())/3);
     for(const auto& F:Cold)for(const auto& P:F.Points)TestTrue(TEXT("Game-queryable front strength is bounded and nonzero"),P.Strength>0&&P.Strength<=1);
     Fill(FVector::ZAxisVector,12,.4,true);const auto Moved=CEDiagnoseWeatherFronts(Mesh,Samples);TestTrue(TEXT("A moving boundary follows the field across the globe"),!Moved.IsEmpty());for(const auto& F:Moved)for(const auto& P:F.Points)TestTrue(TEXT("Front is in its new location, not a drifting decoration"),FMath::Abs(P.Direction.Z-.4)<.055);
     Samples[0].TemperatureC=std::numeric_limits<double>::quiet_NaN();TestTrue(TEXT("Invalid samples reject without broken geometry"),CEDiagnoseWeatherFronts(Mesh,Samples).IsEmpty());
