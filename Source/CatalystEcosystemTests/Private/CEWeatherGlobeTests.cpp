@@ -115,8 +115,18 @@ bool FCEDayNightTest::RunTest(const FString&)
     TestTrue(TEXT("Sunlit surface is warmer than the opposite night side"),Day[0].TemperatureC>Day[1].TemperatureC+5);TestTrue(TEXT("Half a revolution reverses day/night heating"),Night[0].TemperatureC<Night[1].TemperatureC-5);TestEqual(TEXT("Forecast leaves historical temperature repeatable"),Day[0].TemperatureC,Repeat[0].TemperatureC);
     auto Mesh=FCEWeatherGlobeMesh::Make();Positions.Reset();TArray<FCEWeatherSample> Samples;
     for(auto D:Mesh.Directions){Positions.Add(D*(800+50*D.X));auto& S=Samples.AddDefaulted_GetRef();S.TemperatureC=20*D.X;S.PressureHpa=1013.25+30*D.Z;}
-    auto O=CEBuildWeatherGlobe(Mesh,Samples,1500,1013.25,3,false,false,true,false,Positions);TestEqual(TEXT("Two independent heatmap shells"),O->MeshBodyMeters.Num(),Positions.Num()*2);TestEqual(TEXT("Only ground triangles receive standard sunlight"),O->LitTriangleStart,Mesh.Indices.Num()/3);TestEqual(TEXT("All temperature triangles are lit"),O->LitTriangleCount,Mesh.Indices.Num()/3);
-    for(int32 I=0;I<Positions.Num();++I){const auto C=O->MeshColors[I];TestTrue(TEXT("Pressure palette never has a green dominant midpoint"),C.G<FMath::Max(C.R,C.B));TestTrue(TEXT("Temperature is draped on sampled ground"),O->MeshBodyMeters[I+Positions.Num()].GetSafeNormal().Equals(Positions[I].GetSafeNormal(),1.e-9)&&FMath::Abs(O->MeshBodyMeters[I+Positions.Num()].Length()-Positions[I].Length())<3);}
+    auto O=CEBuildWeatherGlobe(Mesh,Samples,1500,1013.25,3,false,false,true,false,Positions);
+    TestEqual(TEXT("Only pressure uses a triangle heatmap shell"),O->MeshBodyMeters.Num(),Positions.Num());
+    TestEqual(TEXT("Temperature uses one swatch per ground sample"),O->BodyMeters.Num(),Positions.Num());
+    TestEqual(TEXT("Temperature matches the biome swatch size"),O->PointSizePixels,FCLPlanetBuilderOverlay().PointSizePixels);
+    for(int32 I=0;I<Positions.Num();++I)
+    {
+        const auto C=O->MeshColors[I];TestTrue(TEXT("Pressure palette never has a green dominant midpoint"),C.G<FMath::Max(C.R,C.B));
+        TestTrue(TEXT("Temperature swatches use exact sampled ground positions"),O->BodyMeters[I]==Positions[I]);
+        TestTrue(TEXT("Temperature colours are opaque data values"),O->Colors[I].A==1.f);
+    }
+    const auto Hidden=CEBuildWeatherGlobe(Mesh,Samples,1500,1013.25,3,false,false,false,false,Positions);
+    TestTrue(TEXT("Hiding the heatmap removes temperature swatches"),Hidden->BodyMeters.IsEmpty()&&Hidden->MeshBodyMeters.IsEmpty());
     return true;
 }
 #endif

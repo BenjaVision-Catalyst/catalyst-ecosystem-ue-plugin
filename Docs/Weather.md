@@ -150,8 +150,8 @@ these sample indices; no longitude seam or duplicated pole is introduced. Terrai
 baking is bounded and cached per input generation.
 
 Add or move the **Overlay** radial guide in Planet. Pressure heatmap, contours, front symbols, labels and wind anchors use that
-core-relative radius. The temperature heatmap follows the sampled composed ground,
-including height variation, with a small display clearance. With no Overlay guide they use the
+core-relative radius. Temperature swatches follow the sampled composed ground, including height
+variation, with the biome view's small display clearance. With no Overlay guide they use the
 outer **sky boundary**, even if AtmosphereMax exists. New guide presets include
 Overlay at AtmosphereMax, or sky for airless presets. Existing custom styles are
 not silently rewritten. The heatmap is inset by 0.1% of shell radius to prevent
@@ -162,16 +162,13 @@ The model has 2075 scalar nodes (generic cap 4096), eight background systems and
 four authored slots. At most 16,384 combined pressure/front segments, 256 closed flow paths,
 2048 arrowheads (at most 128 per loop) and 16 H/L labels are generated. Paths join
 through shared edge/vertex identities and use spherical arc length, including the
-closing edge. The native scene separates the projected ground map from the atmospheric graphics,
-sharing a payload bounded to 16,384 vertices / 98,304 indices in total. The ground
-layer uses standard lights with exposure-compensated data colours and sampled
-terrain normals. It draws over finer native relief, behind the pressure/front
-graphics, with an antialiased camera-facing hemisphere mask. This avoids depth
-fighting without raising the map to an invented terrain envelope. The ground
-map fully replaces terrain albedo while Weather is visible; standard lights and
-its terrain normals retain day/night and relief shading. Fine caster shadows are
-disabled only in this diagnostic view so subsurface interpolation cannot turn
-into false cold-looking blotches. Other designer tabs restore the studio shadows. Pressure uses a blue–purple–orange palette, with no green midpoint.
+closing edge. Atmospheric graphics share a payload bounded to 16,384 vertices /
+98,304 indices. Ground temperature uses the same unlit point swatches as the
+biome preview: exact sampled composed-surface positions, the same default pixel
+size and hemisphere/depth culling. Swatch colours represent temperature directly;
+sunlight, night fill and cast shadows do not alter them. The terrain beneath keeps
+its standard day/night lighting and shadows. No separate temperature mesh or
+terrain material is generated. Pressure uses a blue–purple–orange palette, with no green midpoint.
 Fronts use dark blue/red/purple strokes and filled triangles/semicircles with
 feathered edges; cloud/rain bands do not tint the heatmap.
 Weather evaluations coalesce to at most five per real second. Per-frame work advances persistent visual arrow sites and front opacity; it

@@ -33,14 +33,14 @@ TSharedPtr<const FCLPlanetBuilderOverlay> CEBuildWeatherGlobe(const FCEWeatherGl
     }
     if(Heatmap&&GroundPositions.Num()==Samples.Num())
     {
-        O->LitTriangleStart=O->MeshIndices.Num()/3;O->LitTriangleCount=M.Indices.Num()/3;
-        const int32 Base=O->MeshBodyMeters.Num();for(int32 I=0;I<Samples.Num();++I)
+        // Reuse the biome preview's unlit ground swatches and its default pixel size.
+        O->PointSizePixels=FCLPlanetBuilderOverlay().PointSizePixels;
+        for(int32 I=0;I<Samples.Num();++I)
         {
             const double T=FMath::Clamp((Samples[I].TemperatureC+30)/70.,0.,1.);
             FLinearColor C=T<.5?FMath::Lerp(FLinearColor(.025,.10,.85),FLinearColor(.5,.015,.65),float(T*2)):FMath::Lerp(FLinearColor(.5,.015,.65),FLinearColor(1,.16,.015),float((T-.5)*2));C.A=1.f;
-            O->MeshBodyMeters.Add(GroundPositions[I]+GroundPositions[I].GetSafeNormal()*FMath::Max(.1,GroundPositions[I].Length()*.002));O->MeshColors.Add(C);
+            O->BodyMeters.Add(GroundPositions[I]);O->Colors.Add(C);
         }
-        for(int32 I:M.Indices)O->MeshIndices.Add(Base+I);
     }
     if(Fronts)CEAppendWeatherFrontOverlay(M,CEDiagnoseWeatherFronts(M,Samples),Radius,*O);
     if(!Pressure&&!Wind)return O;
