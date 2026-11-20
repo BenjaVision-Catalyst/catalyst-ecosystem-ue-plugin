@@ -167,17 +167,21 @@ closing edge. Atmospheric graphics share a payload bounded to 16,384 vertices /
 biome preview: exact sampled composed-surface positions, the same default pixel
 size and hemisphere/depth culling. Swatch colours represent temperature directly;
 sunlight, night fill and cast shadows do not alter them. The terrain beneath keeps
-its standard day/night lighting and shadows. Shared camera-facing swatches use an opaque unlit scene component, before
+its standard day/night lighting and shadows. Shared camera-facing swatches use an fully opaque-alpha unlit translucent scene component, before
 atmospheric translucency; camera changes rebuild at most 8192 squares. No
 temperature-specific terrain material is generated. Pressure uses a blue–purple–orange palette, with no green midpoint.
 Isobars use 1.875-pixel cores and marching heads use 2.7-pixel cores (1.5 times
-their initial widths), each with a 0.25-pixel black rim per side. Analytic edge
+their initial widths), each with a 0.5-pixel black rim per side. Analytic edge
 coverage applies to both the core and rim and shares each arrow's fade. All
 heavier black backing strokes are batched before any coloured isobar or arrow
 cores. The outline surrounds their combined silhouette, with no black seams at
 segment or arrow joins. Isobars,
 arrows and filled front symbols use a depth-independent scene ink layer above unlit
 ground swatches; the pressure heatmap stays in the scene behind these graphics.
+Longitude, latitude, equator, pole markers/stems and N/S text use the background
+geographic scene layer (sort priority -30), behind ground swatches (-20),
+atmospheric heatmaps (0) and weather ink. N/S text is scene text, never a late
+Canvas label. All these scene materials use the same pre-DOF translucency pass.
 Ink uses standard world translucency with depth testing disabled. The native
 translucent foreground depth-priority group did not draw these view meshes in
 the Mac qualification; ordinary editor overlay points would cover scene ink.
