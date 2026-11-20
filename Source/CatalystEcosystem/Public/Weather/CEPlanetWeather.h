@@ -16,3 +16,6 @@ private:
     FCSFieldContext Context;
     TArray<TArray<int64>> Inputs;
 };
+
+/** Planet body-frame solar direction; identical basis/phase to the GT daily thermal forcing. */
+CATALYSTECOSYSTEM_API FVector CEWeatherSunDirection(FVector Pole,double RotationPeriodSeconds,double SimulationSeconds);

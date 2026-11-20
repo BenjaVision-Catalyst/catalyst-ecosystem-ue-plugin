@@ -74,7 +74,7 @@ struct CATALYSTECOSYSTEM_API FCEWeatherSettings
     UPROPERTY(EditAnywhere, Category="Weather", meta=(ClampMin="0",ClampMax="3")) double RegionalStrength=1;
     UPROPERTY(EditAnywhere, Category="Weather", meta=(ClampMin="0",ClampMax="40",Units="m/s")) double PrevailingWind=6;
     UPROPERTY(EditAnywhere, Category="Weather", meta=(ClampMin="600",ClampMax="604800",Units="s")) double CirculationSeconds=21600;
-    UPROPERTY(EditAnywhere, Category="Weather", meta=(ClampMin="600",ClampMax="604800",Units="s")) double DaySeconds=86400;
+    UPROPERTY(EditAnywhere, Category="Weather", meta=(ClampMin="60",ClampMax="315576000",Units="s")) double DaySeconds=86400;
     UPROPERTY(EditAnywhere, Category="Authored events") TArray<FCEAuthoredWeatherEvent> Events;
 };
 USTRUCT(BlueprintType)

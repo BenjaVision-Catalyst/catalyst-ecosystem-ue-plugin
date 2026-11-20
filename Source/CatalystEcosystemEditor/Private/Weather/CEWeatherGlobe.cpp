@@ -1,21 +1,6 @@
 #include "Weather/CEWeatherGlobe.h"
 #include "Weather/CEWeatherFronts.h"
 #if WITH_CE_LANDFORM
-FCEWeatherGlobeMesh FCEWeatherGlobeMesh::Make()
-{
-    FCEWeatherGlobeMesh M;const double T=(1+FMath::Sqrt(5.))*.5;
-    M.Directions={{-1,T,0},{1,T,0},{-1,-T,0},{1,-T,0},{0,-1,T},{0,1,T},{0,-1,-T},{0,1,-T},{T,0,-1},{T,0,1},{-T,0,-1},{-T,0,1}};
-    for(auto& D:M.Directions)D.Normalize();
-    M.Indices={0,11,5, 0,5,1, 0,1,7, 0,7,10, 0,10,11, 1,5,9, 5,11,4, 11,10,2, 10,7,6, 7,1,8, 3,9,4, 3,4,2, 3,2,6, 3,6,8, 3,8,9, 4,9,5, 2,4,11, 6,2,10, 8,6,7, 9,8,1};
-    for(int Pass=0;Pass<4;++Pass)
-    {
-        TMap<uint64,int32> Cache;TArray<int32> Next;Next.Reserve(M.Indices.Num()*4);
-        auto Mid=[&](int32 A,int32 B){const uint64 Key=uint64(FMath::Min(A,B))<<32|uint32(FMath::Max(A,B));if(const int32* Found=Cache.Find(Key))return *Found;const int32 I=M.Directions.Add((M.Directions[A]+M.Directions[B]).GetSafeNormal());Cache.Add(Key,I);return I;};
-        for(int32 I=0;I<M.Indices.Num();I+=3){const int32 A=M.Indices[I],B=M.Indices[I+1],C=M.Indices[I+2],AB=Mid(A,B),BC=Mid(B,C),CA=Mid(C,A);Next.Append({A,AB,CA,B,BC,AB,C,CA,BC,AB,BC,CA});}
-        M.Indices=MoveTemp(Next);
-    }
-    return M;
-}
 bool CEWeatherTerrainInputsMatch(const FCLCompiledPlanetRecipe& A,const FCLCompiledPlanetRecipe& B)
 {
     if(!A.SourceRecipe||!B.SourceRecipe)return false;
@@ -25,9 +10,9 @@ bool CEWeatherTerrainInputsMatch(const FCLCompiledPlanetRecipe& A,const FCLCompi
     if(!FCLPlanetRecipe::StaticStruct()->CompareScriptStruct(&X,&Probe,0))return false;
     return FCLPlanetRecipe::StaticStruct()->CompareScriptStruct(&X,&Y,0);
 }
-TSharedPtr<const FCLPlanetBuilderOverlay> CEBuildWeatherGlobe(const FCEWeatherGlobeMesh& M,TConstArrayView<FCEWeatherSample> Samples,double Radius,double Reference,int32 Layer,bool Pressure,bool Wind,bool Heatmap,bool Fronts)
+TSharedPtr<const FCLPlanetBuilderOverlay> CEBuildWeatherGlobe(const FCEWeatherGlobeMesh& M,TConstArrayView<FCEWeatherSample> Samples,double Radius,double Reference,int32 Layer,bool Pressure,bool Wind,bool Heatmap,bool Fronts,TConstArrayView<FVector> GroundPositions)
 {
-    auto O=MakeShared<FCLPlanetBuilderOverlay>();O->PointSizePixels=0;
+    auto O=MakeShared<FCLPlanetBuilderOverlay>();O->PointSizePixels=0;O->bUseMeshOpacity=true;
     if(Samples.Num()!=M.Directions.Num()||Samples.IsEmpty()||Radius<=0||!FMath::IsFinite(Radius)||Reference<=0)return O;
     const double HeatRadius=Radius-FMath::Max(Radius*.001,.001),Interval=4*Reference/1013.25;
     if(Heatmap)
@@ -40,11 +25,22 @@ TSharedPtr<const FCLPlanetBuilderOverlay> CEBuildWeatherGlobe(const FCEWeatherGl
             if(Layer==0)C=V<.5?FMath::Lerp(FLinearColor(.05,.15,.95),FLinearColor(.1,.8,.4),V*2):FMath::Lerp(FLinearColor(.1,.8,.4),FLinearColor(1,.08,.02),(V-.5)*2);
             else if(Layer==1)C=FMath::Lerp(FLinearColor(.02,.15,.5),FLinearColor(1,.85,.03),V);
             else if(Layer==2)C=V<.5?FMath::Lerp(FLinearColor(.09,.12,.18),FLinearColor(.02,.65,1),V*2):FMath::Lerp(FLinearColor(.02,.65,1),FLinearColor(.9,.04,.9),(V-.5)*2);
-            else C=V<.5?FMath::Lerp(FLinearColor(.01,.12,1),FLinearColor(.01,.8,.35),V*2):FMath::Lerp(FLinearColor(.01,.8,.35),FLinearColor(1,.5,.01),(V-.5)*2);
+            else C=V<.5?FMath::Lerp(FLinearColor(.01,.12,1),FLinearColor(.48,.015,.66),V*2):FMath::Lerp(FLinearColor(.48,.015,.66),FLinearColor(1,.5,.01),(V-.5)*2);
             // Keep the tint legible through the transparent shell without a grey midpoint.
             auto HSV=C.LinearRGBToHSV();HSV.G=FMath::Lerp(HSV.G,1.f,.35f);C=HSV.HSVToLinearRGB();
-            O->MeshBodyMeters.Add(M.Directions[I]*HeatRadius);O->MeshColors.Add(C);
+            C.A=.12f;O->MeshBodyMeters.Add(M.Directions[I]*HeatRadius);O->MeshColors.Add(C);
         }
+    }
+    if(Heatmap&&GroundPositions.Num()==Samples.Num())
+    {
+        O->LitTriangleStart=O->MeshIndices.Num()/3;O->LitTriangleCount=M.Indices.Num()/3;
+        const int32 Base=O->MeshBodyMeters.Num();for(int32 I=0;I<Samples.Num();++I)
+        {
+            const double T=FMath::Clamp((Samples[I].TemperatureC+30)/70.,0.,1.);
+            FLinearColor C=T<.5?FMath::Lerp(FLinearColor(.025,.10,.85),FLinearColor(.5,.015,.65),float(T*2)):FMath::Lerp(FLinearColor(.5,.015,.65),FLinearColor(1,.16,.015),float((T-.5)*2));C.A=.55f;
+            O->MeshBodyMeters.Add(GroundPositions[I]+GroundPositions[I].GetSafeNormal()*FMath::Max(.1,GroundPositions[I].Length()*.002));O->MeshColors.Add(C);
+        }
+        for(int32 I:M.Indices)O->MeshIndices.Add(Base+I);
     }
     if(Fronts)CEAppendWeatherFrontOverlay(M,CEDiagnoseWeatherFronts(M,Samples),Radius,*O);
     if(!Pressure&&!Wind)return O;
@@ -89,7 +85,7 @@ TSharedPtr<const FCLPlanetBuilderOverlay> CEBuildWeatherGlobe(const FCEWeatherGl
                 Edge=INDEX_NONE;for(int32 Candidate:Nodes[Current].Links)if(!Links[Candidate].Used){Edge=Candidate;break;}
             }
             if(Path.Num()<4||Path.Last()!=Start)continue;
-            FCLPlanetBuilderOverlayFlow Flow;Flow.Key=(uint64(FMath::RoundToInt64(P/Reference*1000000))<<16)|uint16(Loop++);
+            FCLPlanetBuilderOverlayFlow Flow;Flow.Family=uint64(FMath::RoundToInt64(P/Reference*1000000));Flow.Key=(Flow.Family<<16)|uint16(Loop++);
             for(int32 N:Path)Flow.BodyMeters.Add(Nodes[N].Direction*Radius);
             if(!Flow.BuildArcLengths())continue;
             double Strength=0,Along=0;
@@ -99,9 +95,9 @@ TSharedPtr<const FCLPlanetBuilderOverlay> CEBuildWeatherGlobe(const FCEWeatherGl
                 const FVector W=FVector::VectorPlaneProject((A.Wind+B.Wind)*.5,Mid),T=FVector::VectorPlaneProject(B.Direction-A.Direction,Mid).GetSafeNormal();
                 const double Length=Flow.ArcMeters[I]-Flow.ArcMeters[I-1];Strength+=W.Length()*Length;Along+=FVector::DotProduct(W,T)*Length;
             }
-            // A shared phase and representative speed preserve equal spacing all around a loop.
+            // Representative signed speed; the view owns persistent markers independently of their count.
             Flow.SpeedMetersPerSecond=Radius*.002*Strength/Flow.LengthMeters()*(Along<0?-1:1);
-            Flow.ArrowCount=FMath::Min(HeadBudget,FMath::Clamp(FMath::RoundToInt(Flow.LengthMeters()/(Radius*.18)),1,128));HeadBudget-=Flow.ArrowCount;
+            Flow.ArrowCount=FMath::Min(HeadBudget,FMath::Clamp(FMath::RoundToInt(Flow.LengthMeters()/(Radius*.36)),1,128));HeadBudget-=Flow.ArrowCount;
             O->Flows.Add(MoveTemp(Flow));
         }
     }

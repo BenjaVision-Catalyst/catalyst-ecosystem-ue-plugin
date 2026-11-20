@@ -1,6 +1,7 @@
 #include "Misc/AutomationTest.h"
 #if WITH_CE_LANDFORM
 #include "Weather/CEWeatherGlobe.h"
+#include "Algo/Reverse.h"
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCEWeatherGlobeTest,"Catalyst.Ecosystem.Weather.GlobeTopologyAndGuide",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
 bool FCEWeatherGlobeTest::RunTest(const FString&)
 {
@@ -85,4 +86,37 @@ bool FCEContourMotionTest::RunTest(const FString&)
     Flow.BodyMeters.Pop();TestFalse(TEXT("Open paths cannot introduce a seam jump"),Flow.BuildArcLengths());return true;
 }
 
+#endif
+
+#if WITH_CE_LANDFORM
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCEPersistentArrowTest,"Catalyst.Ecosystem.Weather.PersistentArrows",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FCEPersistentArrowTest::RunTest(const FString&)
+{
+    FCLPlanetBuilderOverlayFlow F;F.ArrowCount=8;F.SpeedMetersPerSecond=10;
+    for(int32 I=0;I<=64;++I){const double A=I*2*UE_DOUBLE_PI/64;F.BodyMeters.Add(FVector(FMath::Cos(A),FMath::Sin(A),0)*1000);}F.BodyMeters.Last()=F.BodyMeters[0];F.BuildArcLengths();
+    FCLPlanetBuilderFlowAnimation A;A.SetFlow(F);A.Tick(1);const auto Before=A.Heads;F.ArrowCount=9;A.SetFlow(F);
+    TestEqual(TEXT("One extra site is admitted"),A.Heads.Num(),9);TestEqual(TEXT("New arrow starts transparent"),A.Heads.Last().Opacity,0.f);
+    for(int32 I=0;I<Before.Num();++I){TestEqual(TEXT("Existing arrow identity survives count change"),A.Heads[I].Id,Before[I].Id);TestTrue(TEXT("Count change does not redistribute existing arrows"),FMath::IsNearlyEqual(A.Heads[I].DistanceMeters,Before[I].DistanceMeters,1.e-6));}
+    A.Tick(.3);TestTrue(TEXT("Birth fades through partial opacity"),A.Heads.Last().Opacity>0&&A.Heads.Last().Opacity<1);F.ArrowCount=8;const auto Grown=A.Heads;A.SetFlow(F);int32 Retiring=0;
+    for(int32 I=0;I<A.Heads.Num();++I){Retiring+=A.Heads[I].Retiring;TestTrue(TEXT("Contraction preserves every current position"),FMath::IsNearlyEqual(A.Heads[I].DistanceMeters,Grown[I].DistanceMeters,1.e-6));}TestEqual(TEXT("Only one arrow retires"),Retiring,1);A.Tick(1);TestEqual(TEXT("Retirement completes"),A.Heads.Num(),8);
+    // Extraction can rotate its seam or reverse traversal without moving a site.
+    TArray<FVector> Sites;for(const auto& H:A.Heads){FVector P,T;A.Flow.Sample(H.DistanceMeters,P,T);Sites.Add(P);}
+    Algo::Reverse(F.BodyMeters);F.BuildArcLengths();F.SpeedMetersPerSecond=-10;A.SetFlow(F);
+    for(int32 I=0;I<A.Heads.Num();++I){FVector P,T;A.Flow.Sample(A.Heads[I].DistanceMeters,P,T);TestTrue(TEXT("Reversed extraction preserves physical marker positions"),P.Equals(Sites[I],1.e-6));}
+    return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCEDayNightTest,"Catalyst.Ecosystem.Weather.DayNightAndSurfaceHeatmap",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FCEDayNightTest::RunTest(const FString&)
+{
+    const double Period=7200;const FVector Pole=FVector::ZAxisVector,Sun=CEWeatherSunDirection(Pole,Period,0);
+    TestTrue(TEXT("Sun makes one complete turn per configured period"),Sun.Equals(CEWeatherSunDirection(Pole,Period,Period),1.e-10));TestTrue(TEXT("Night is the opposite solar direction"),Sun.Equals(-CEWeatherSunDirection(Pole,Period,Period*.5),1.e-10));
+    auto Model=FCEPlanetEcosystem::MakeDefault();Model.Weather.DaySeconds=Period;Model.Weather.RegionalStrength=0;Model.Weather.PrevailingWind=0;Model.Weather.Events.Reset();TArray<FVector> Positions={Sun*1000,-Sun*1000},Normals={Sun,-Sun};FCEPlanetWeather Field;FString Error;
+    if(!TestTrue(TEXT("Planet period binds to the existing native weather program"),Field.Initialize(Model,Positions,Normals,1000,17,Error))){AddError(Error);return false;}TArray<FCEWeatherSample> Day,Night,Repeat;Field.Evaluate(0,Day,Error);Field.Evaluate(3600,Night,Error);Field.Evaluate(0,Repeat,Error);
+    TestTrue(TEXT("Sunlit surface is warmer than the opposite night side"),Day[0].TemperatureC>Day[1].TemperatureC+5);TestTrue(TEXT("Half a revolution reverses day/night heating"),Night[0].TemperatureC<Night[1].TemperatureC-5);TestEqual(TEXT("Forecast leaves historical temperature repeatable"),Day[0].TemperatureC,Repeat[0].TemperatureC);
+    auto Mesh=FCEWeatherGlobeMesh::Make();Positions.Reset();TArray<FCEWeatherSample> Samples;
+    for(auto D:Mesh.Directions){Positions.Add(D*(800+50*D.X));auto& S=Samples.AddDefaulted_GetRef();S.TemperatureC=20*D.X;S.PressureHpa=1013.25+30*D.Z;}
+    auto O=CEBuildWeatherGlobe(Mesh,Samples,1500,1013.25,3,false,false,true,false,Positions);TestEqual(TEXT("Two independent heatmap shells"),O->MeshBodyMeters.Num(),Positions.Num()*2);TestEqual(TEXT("Only ground triangles receive standard sunlight"),O->LitTriangleStart,Mesh.Indices.Num()/3);TestEqual(TEXT("All temperature triangles are lit"),O->LitTriangleCount,Mesh.Indices.Num()/3);
+    for(int32 I=0;I<Positions.Num();++I){const auto C=O->MeshColors[I];TestTrue(TEXT("Pressure palette never has a green dominant midpoint"),C.G<FMath::Max(C.R,C.B));TestTrue(TEXT("Temperature is draped on sampled ground"),O->MeshBodyMeters[I+Positions.Num()].GetSafeNormal().Equals(Positions[I].GetSafeNormal(),1.e-9)&&FMath::Abs(O->MeshBodyMeters[I+Positions.Num()].Length()-Positions[I].Length())<3);}
+    return true;
+}
 #endif

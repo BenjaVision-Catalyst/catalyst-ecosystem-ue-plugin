@@ -39,7 +39,7 @@ bool FCEPlanetEcosystem::Validate(FString& Error) const
     {Error=TEXT("Climate values must be finite, within their documented ranges, with a nonzero pole axis and at most 64 biomes.");return false;}
     const auto& W=Weather;
     if(!Inside(W.Character,{0,1})||!Inside(W.ReferencePressureHpa,{1,10000})||!Inside(W.WindResponse,{.01,5})){Error=TEXT("Weather Character, reference pressure and wind response exceed their finite ranges.");return false;}
-    if(!Inside(W.RegionalStrength,{0,3})||!Inside(W.PrevailingWind,{0,40})||!Inside(W.CirculationSeconds,{600,604800})||!Inside(W.DaySeconds,{600,604800})||W.Events.Num()>4)
+    if(!Inside(W.RegionalStrength,{0,3})||!Inside(W.PrevailingWind,{0,40})||!Inside(W.CirculationSeconds,{600,604800})||!Inside(W.DaySeconds,{60,315576000})||W.Events.Num()>4)
     {Error=TEXT("Weather needs valid strength, speed and periods, with at most four authored events.");return false;}
     TSet<FGuid> EventIds;
     for(const auto& E:W.Events)

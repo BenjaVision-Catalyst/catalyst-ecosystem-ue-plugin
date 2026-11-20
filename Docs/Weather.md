@@ -149,8 +149,9 @@ biome placement supplies nearest biome identities. The model and renderer share
 these sample indices; no longitude seam or duplicated pole is introduced. Terrain
 baking is bounded and cached per input generation.
 
-Add or move the **Overlay** radial guide in Planet. Heatmap, contours, labels and
-wind anchors use that core-relative radius. With no Overlay guide they use the
+Add or move the **Overlay** radial guide in Planet. Pressure heatmap, contours, front symbols, labels and wind anchors use that
+core-relative radius. The temperature heatmap follows the sampled composed ground,
+including height variation, with a small display clearance. With no Overlay guide they use the
 outer **sky boundary**, even if AtmosphereMax exists. New guide presets include
 Overlay at AtmosphereMax, or sky for airless presets. Existing custom styles are
 not silently rewritten. The heatmap is inset by 0.1% of shell radius to prevent
@@ -161,10 +162,20 @@ The model has 2075 scalar nodes (generic cap 4096), eight background systems and
 four authored slots. At most 16,384 combined pressure/front segments, 256 closed flow paths,
 2048 arrowheads (at most 128 per loop) and 16 H/L labels are generated. Paths join
 through shared edge/vertex identities and use spherical arc length, including the
-closing edge. The native scene retains one mesh, updated only on data changes.
-Weather evaluations coalesce to at most five per real second. Per-frame work
-advances bounded visual phases and draws arrowheads; it does not evaluate weather
-or rebuild the heatmap. Superseded path phases are retired with the payload.
+closing edge. The native scene retains one bounded mesh (up to 16,384 vertices / 98,304 indices),
+combining the transparent pressure shell, ground temperature tint and filled front
+symbols. Pressure uses a blue–purple–orange palette, with no green midpoint.
+Fronts use dark blue/red/purple strokes and filled triangles/semicircles with
+feathered edges; cloud/rain bands do not tint the heatmap.
+Weather evaluations coalesce to at most five per real second. Per-frame work advances persistent visual arrow sites and front opacity; it
+does not evaluate weather. Arrows are approximately twice as widely spaced as
+the original marching view. Replacing a contour projects existing sites onto its
+new arc, independent of seam/traversal and arrow count. New sites enter the
+largest available gaps at zero opacity; redundant sites retire over 0.6 seconds.
+No count change globally redistributes sites. Same-pressure loops match spatially
+rather than by extraction order. Front birth/retirement fades over 0.8 real seconds;
+front presentation may republish at 20 Hz while fading, otherwise only on new data.
+These are display transitions, not changes to simulation time or physical fields.
 
 Only Overlay changes preserve the input generation. Other recipe changes rebuild
 the bake. If terrain explicitly references Overlay, moving it also rebuilds;
@@ -177,3 +188,31 @@ multiplayer replication and near-player precipitation/cloud/lightning rendering
 are subsequent integrations. This editor preview is not a second gameplay
 weather authority. Quantitative fixtures, source/export parity and native checks
 are recorded in [Weather qualification](WeatherQualification.md).
+
+## Planet clock and fronts
+
+Planet owns `RotationPeriodSeconds` (60–315,576,000 simulation seconds). The Planet
+inspector's Rotation Speed (degrees/second) and Revolution time (hours per axial
+turn) edit this single value, so they cannot drift. Existing recipes default to
+24 hours. The embedded Weather inspector hides its standalone `DaySeconds` input:
+the Planet period supplies that input to the unchanged GT-authored model.
+The existing solar basis and phase drive both daily temperature forcing and the
+preview's world-fixed standard directional sunlight. An opposed weaker night
+light and ambient sky illumination keep the shadow hemisphere readable. Orbiting
+the camera does not move this solar terminator. Other designer tabs retain the
+studio rig. This first clock has no orbital seasons, axial obliquity controls or
+thermal inertia integration; daily forcing is analytic and ocean-moderated.
+
+Front diagnostics and their shared topology now belong to the runtime module:
+`CEDiagnoseWeatherFronts` returns canonical connected boundaries, sampled weather
+and continuous 0–1 ridge confidence in `FCEWeatherFrontPoint::Strength`. Strength
+ramps across thermal-gradient and ridge-sharpness ranges rather than making the
+old hard pass/fail cut. Short chains also ease from zero. Geometry and front-kind
+labels are categorical diagnoses and can split/merge; game effects should query
+the underlying temperature, wind, rain and strength, not treat a newly extracted
+polyline as an instantaneous physical storm. Editor birth/death presentation is
+separate and never feeds weather back into the simulation.
+
+Real frontogenesis strengthens an existing air-mass temperature contrast; frontolysis
+weakens it. A local frontal passage can be abrupt, but this does not imply a whole
+front suddenly materializes. See the [NWS frontogenesis/frontolysis guide](https://www.weather.gov/media/zhu/ZHU_Training_Page/Miscellaneous/fronts/fronts.pdf).

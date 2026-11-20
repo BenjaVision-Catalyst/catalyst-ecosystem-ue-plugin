@@ -2,6 +2,7 @@
 #include <limits>
 #if WITH_CE_LANDFORM
 #include "Weather/CEWeatherFronts.h"
+#include "Weather/CEWeatherGlobe.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCEWeatherFrontTest,"Catalyst.Ecosystem.Weather.FrontDiagnostics",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
@@ -34,6 +35,9 @@ bool FCEWeatherFrontTest::RunTest(const FString&)
     TestTrue(TEXT("Front work stays bounded"),Cold.Num()<=64&&Points<=1024);
     const auto Again=CEDiagnoseWeatherFronts(Mesh,Samples);TestEqual(TEXT("Repeat queries preserve chain ordering"),Again.Num(),Cold.Num());
     for(int32 I=0;I<Cold.Num();++I){TestEqual(TEXT("Repeat query preserves node count"),Again[I].Points.Num(),Cold[I].Points.Num());for(int32 J=0;J<Cold[I].Points.Num();++J)TestTrue(TEXT("Repeat query preserves canonical geometry"),Again[I].Points[J].Direction==Cold[I].Points[J].Direction);}
+    FCEWeatherFrontPresentation Presentation;Presentation.SetFronts(Cold);TestEqual(TEXT("Newly diagnosed fronts start transparent"),Presentation.Entries[0].Opacity,0.f);
+    Presentation.Tick(.4);TestTrue(TEXT("Front birth fades continuously"),Presentation.Entries[0].Opacity>0&&Presentation.Entries[0].Opacity<1);const auto Opacity=Presentation.Entries[0].Opacity;Presentation.SetFronts(Cold);TestEqual(TEXT("Repeated samples do not restart front birth"),Presentation.Entries[0].Opacity,Opacity);
+    Presentation.SetFronts({});TestTrue(TEXT("Missing topology retires instead of vanishing"),!Presentation.Entries.IsEmpty()&&Presentation.Entries[0].Retiring);Presentation.Tick(.1);TestTrue(TEXT("Retiring front remains partially visible"),Presentation.Entries[0].Opacity>0&&Presentation.Entries[0].Opacity<Opacity);Presentation.Tick(1);TestTrue(TEXT("Retirement releases presentation geometry"),Presentation.Entries.IsEmpty());
     const auto Overlay=CEBuildWeatherGlobe(Mesh,Samples,1500,1013.25,3,false,false,true,true);
     TestTrue(TEXT("Front symbols render without pressure lines"),!Overlay->Segments.IsEmpty());
     for(const auto& L:Overlay->Segments)TestTrue(TEXT("Lines and all marker points use the radial guide"),FMath::IsNearlyEqual(L.A.Length(),1500.,1.e-6)&&FMath::IsNearlyEqual(L.B.Length(),1500.,1.e-6));
@@ -41,9 +45,10 @@ bool FCEWeatherFrontTest::RunTest(const FString&)
     for(const auto& F:Warm)TestTrue(TEXT("Warm air advancing toward cold is a warm front"),F.Kind==ECEWeatherFrontKind::Warm);
     Fill(FVector::XAxisVector,0,.1,false);const auto Still=CEDiagnoseWeatherFronts(Mesh,Samples);TestTrue(TEXT("A stationary thermal boundary remains visible"),!Still.IsEmpty());for(const auto& F:Still)TestTrue(TEXT("Calm boundaries are not falsely labelled advancing"),F.Kind==ECEWeatherFrontKind::Stationary);
     const auto Dry=CEBuildWeatherGlobe(Mesh,Samples,1500,1013.25,3,false,false,true,true);
-    const auto Plain=CEBuildWeatherGlobe(Mesh,Samples,1500,1013.25,3,false,false,true,false);int32 WetTinted=0,DryTinted=0;
-    for(int32 I=0;I<Samples.Num();++I){WetTinted+=Overlay->MeshColors[I]!=Plain->MeshColors[I];DryTinted+=Dry->MeshColors[I]!=Plain->MeshColors[I];}
-    TestTrue(TEXT("Cloud and rain broaden the band without an opaque mesh"),WetTinted>DryTinted&&DryTinted>0&&Overlay->MeshBodyMeters==Plain->MeshBodyMeters);
+    const auto Plain=CEBuildWeatherGlobe(Mesh,Samples,1500,1013.25,3,false,false,true,false);
+    for(int32 I=0;I<Samples.Num();++I)TestTrue(TEXT("Fronts never tint cloud bands into the heatmap"),Overlay->MeshColors[I]==Plain->MeshColors[I]&&Dry->MeshColors[I]==Plain->MeshColors[I]);
+    TestTrue(TEXT("Front triangles and semicircles have filled geometry"),Overlay->MeshIndices.Num()>Plain->MeshIndices.Num()&&Dry->MeshIndices.Num()>Plain->MeshIndices.Num());
+    for(const auto& F:Cold)for(const auto& P:F.Points)TestTrue(TEXT("Game-queryable front strength is bounded and nonzero"),P.Strength>0&&P.Strength<=1);
     Fill(FVector::ZAxisVector,12,.4,true);const auto Moved=CEDiagnoseWeatherFronts(Mesh,Samples);TestTrue(TEXT("A moving boundary follows the field across the globe"),!Moved.IsEmpty());for(const auto& F:Moved)for(const auto& P:F.Points)TestTrue(TEXT("Front is in its new location, not a drifting decoration"),FMath::Abs(P.Direction.Z-.4)<.055);
     Samples[0].TemperatureC=std::numeric_limits<double>::quiet_NaN();TestTrue(TEXT("Invalid samples reject without broken geometry"),CEDiagnoseWeatherFronts(Mesh,Samples).IsEmpty());
     // The unchanged domain model must supply visible, repeatable evolving fronts too.
@@ -57,7 +62,7 @@ bool FCEWeatherFrontTest::RunTest(const FString&)
         const double Begin=FPlatformTime::Seconds();const auto Fronts=CEDiagnoseWeatherFronts(Mesh,Samples);const auto Globe=CEBuildWeatherGlobe(Mesh,Samples,1500,1013.25,3);TimeMs+=(FPlatformTime::Seconds()-Begin)*1000;
         int32 C=0,W=0,S=0;for(const auto& F:Fronts){C+=F.Kind==ECEWeatherFrontKind::Cold;W+=F.Kind==ECEWeatherFrontKind::Warm;S+=F.Kind==ECEWeatherFrontKind::Stationary;}
         Natural+=Fronts.Num();Evidence+=FString::Printf(TEXT("time=%d cold=%d warm=%d stationary=%d segments=%d\n"),Time,C,W,S,Globe->Segments.Num());
-        TestTrue(TEXT("Combined overlay respects native rendering bounds"),Globe->Segments.Num()<=16384&&Globe->MeshBodyMeters.Num()<=8192&&Globe->MeshIndices.Num()<=49152);
+        TestTrue(TEXT("Combined overlay respects native rendering bounds"),Globe->Segments.Num()<=16384&&Globe->MeshBodyMeters.Num()<=16384&&Globe->MeshIndices.Num()<=98304);
     }
     TestTrue(TEXT("Natural model exposes fronts on the globe"),Natural>0);Evidence+=FString::Printf(TEXT("diagnostic plus combined overlay average %.3f ms\n"),TimeMs/3);AddInfo(Evidence);
     FFileHelper::SaveStringToFile(Evidence,*(FPaths::ProjectSavedDir()/TEXT("EcosystemQualification/weather-fronts.txt")));return true;

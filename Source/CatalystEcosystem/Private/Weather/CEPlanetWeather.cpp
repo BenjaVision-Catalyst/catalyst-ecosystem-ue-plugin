@@ -50,3 +50,12 @@ bool FCEPlanetWeather::Evaluate(int64 Seconds,TArray<FCEWeatherSample>& Samples,
     Samples.Reset();Samples.Reserve(Raw.Num());for(const auto& R:Raw){if(R.Num()!=8){Error=TEXT("Weather channel schema mismatch");return false;}auto& S=Samples.AddDefaulted_GetRef();S.TemperatureC=double(R[0])/10000;S.Wind=FVector(R[1],R[2],R[3])/10000.;S.RainMmHour=double(R[4])/10000.;S.Dust=double(R[5])/10000.;S.Cloud=double(R[6])/10000.;S.PressureHpa=double(R[7])/10000.;}
     return true;
 }
+
+FVector CEWeatherSunDirection(FVector Pole,double Period,double Seconds)
+{
+    if(!FMath::IsFinite(Period)||Period<60||!FMath::IsFinite(Seconds)||Pole.ContainsNaN()||Pole.IsNearlyZero())return FVector::XAxisVector;
+    Pole.Normalize();const FVector Axis=FMath::Abs(Pole.Z)<.9?FVector::ZAxisVector:FVector::XAxisVector;
+    const FVector U=FVector::CrossProduct(Axis,Pole).GetSafeNormal(),V=FVector::CrossProduct(Pole,U).GetSafeNormal();
+    const double Phase=2*UE_DOUBLE_PI*FMath::Fmod(Seconds,Period)/Period;
+    return U*FMath::Cos(Phase)+V*FMath::Sin(Phase);
+}

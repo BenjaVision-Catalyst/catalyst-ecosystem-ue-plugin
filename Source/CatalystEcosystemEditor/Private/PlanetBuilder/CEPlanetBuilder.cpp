@@ -65,6 +65,7 @@ struct FCEWeatherView
     TArray<FVector> Positions;
     TSharedPtr<const FCLPlanetBuilderOverlay> Overlay;
     TArray<FCEWeatherSample> Samples;
+    TArray<FCEWeatherFront> Fronts;
     FString Error;
     double Seconds=0;
     int64 ValidTime=0;
@@ -125,7 +126,7 @@ public:
             if(WeatherRevision==Revision&&Result.Error.IsEmpty()&&Result.Field.IsValid()&&Result.Overlay.IsValid())
             {
                 WeatherField=Result.Field;WeatherPositions=MoveTemp(Result.Positions);WeatherCost=Result.Seconds;
-                if(bActive&&Subtab==2&&WeatherVisible()){WeatherSamples=MoveTemp(Result.Samples);RenderedWeatherTime=Result.ValidTime;Context.PublishOverlay(Result.Overlay);WeatherError.Reset();}
+                if(bActive&&Subtab==2&&WeatherVisible()){WeatherSamples=MoveTemp(Result.Samples);RenderedWeatherTime=Result.ValidTime;WeatherBaseOverlay=Result.Overlay;WeatherFrontPresentation.SetFronts(MoveTemp(Result.Fronts));bFrontPresentationDirty=true;WeatherError.Reset();}
             }
             else if(WeatherRevision==Revision&&!Result.Error.IsEmpty())WeatherError=Result.Error;
         }
@@ -135,6 +136,13 @@ public:
             WeatherSeconds+=FMath::Max(0.f,D)*60.;
             const int64 Target=FMath::FloorToInt64(WeatherSeconds);
             if(Target>WeatherClock.AcceptedSeconds()&&WeatherClock.AdvanceTo(Target))bWeatherDirty=true;
+        }
+        bFrontPresentationDirty|=WeatherFrontPresentation.IsAnimating();WeatherFrontPresentation.Tick(D);
+        if(bActive&&Subtab==2&&WeatherVisible()&&WeatherBaseOverlay&&Plan&&(bFrontPresentationDirty||WeatherFrontPresentation.IsAnimating())&&FPlatformTime::Seconds()>=NextFrontViewAt)
+        {
+            auto O=MakeShared<FCLPlanetBuilderOverlay>(*WeatherBaseOverlay);
+            WeatherFrontPresentation.Append(*WeatherMesh,CLPlanetOverlayRadiusMeters(*Plan),*O);Context.PublishOverlay(O);
+            NextFrontViewAt=FPlatformTime::Seconds()+.05;bFrontPresentationDirty=false;
         }
         if(bActive&&Subtab==2&&WeatherVisible()&&bWeatherDirty&&!WeatherWork.IsValid()&&!Work.IsValid()&&Profile.IsValid()&&Plan)StartWeather(Plan);
         if(bActive&&Subtab!=2&&bPreviewDirty&&!Dragging&&!Work.IsValid()&&!WeatherWork.IsValid()&&Profile.IsValid()&&Plan)StartPreview(Plan);
@@ -163,7 +171,10 @@ private:
     TSharedPtr<FCEPlanetWeather,ESPMode::ThreadSafe> WeatherField;
     TArray<FVector> WeatherPositions;
     TSharedPtr<const FCEWeatherGlobeMesh,ESPMode::ThreadSafe> WeatherMesh;
-    double NextWeatherViewAt=0;
+    double NextWeatherViewAt=0,NextFrontViewAt=0;
+    bool bFrontPresentationDirty=false;
+    FCEWeatherFrontPresentation WeatherFrontPresentation;
+    TSharedPtr<const FCLPlanetBuilderOverlay> WeatherBaseOverlay;
     TArray<FCEWeatherSample> WeatherSamples;
     FCSFieldRuntime WeatherClock{3600};
     FString WeatherError;
@@ -193,7 +204,7 @@ private:
     }
     void ResetWeather()
     {
-        WeatherField.Reset();WeatherPositions.Reset();WeatherSamples.Reset();WeatherClock=FCSFieldRuntime(3600);WeatherSeconds=3600;NextWeatherViewAt=0;bWeatherDirty=true;WeatherError.Reset();
+        WeatherBaseOverlay.Reset();WeatherFrontPresentation.Entries.Reset();WeatherField.Reset();WeatherPositions.Reset();WeatherSamples.Reset();WeatherClock=FCSFieldRuntime(3600);WeatherSeconds=3600;NextWeatherViewAt=0;bWeatherDirty=true;WeatherError.Reset();
     }
     void StartWeather(TSharedPtr<const FCLCompiledPlanetRecipe> Plan)
     {
@@ -205,7 +216,7 @@ private:
             if(!Placement){WeatherError=Pending?FString():Error;return;}
         }
         bWeatherDirty=false;WeatherRevision=Revision;NextWeatherViewAt=FPlatformTime::Seconds()+.2;
-        auto Field=WeatherField;auto Positions=WeatherPositions;auto Model=Profile->Ecosystem;Model.Climate.SeaLevelMeters=CEPlanetSeaLevelMeters(*Plan);
+        auto Field=WeatherField;auto Positions=WeatherPositions;auto Model=Profile->Ecosystem;Model.Climate.SeaLevelMeters=CEPlanetSeaLevelMeters(*Plan);Model.Weather.DaySeconds=Plan->SourceRecipe->RotationPeriodSeconds;
         const auto Time=WeatherClock.AcceptedSeconds();const int32 Seed=Context.Planet.IsValid()?Context.Planet->Recipe.Seed:0;
         const auto Mesh=WeatherMesh;
         auto Cached=RenderedWeatherTime==Time&&Field?WeatherSamples:TArray<FCEWeatherSample>();
@@ -232,7 +243,8 @@ private:
             }
             if(Cancel->Load())return R;
             if(Cached.Num()==Mesh->Directions.Num())R.Samples=MoveTemp(Cached);else if(!Field->Evaluate(Time,R.Samples,R.Error))return R;
-            R.Overlay=CEBuildWeatherGlobe(*Mesh,R.Samples,CLPlanetOverlayRadiusMeters(*Plan),Model.Weather.ReferencePressureHpa,3);
+            auto Overlay=ConstCastSharedPtr<FCLPlanetBuilderOverlay>(CEBuildWeatherGlobe(*Mesh,R.Samples,CLPlanetOverlayRadiusMeters(*Plan),Model.Weather.ReferencePressureHpa,3,true,true,true,false,Positions));
+            R.Fronts=CEDiagnoseWeatherFronts(*Mesh,R.Samples);Overlay->SunDirection=CEWeatherSunDirection(Model.Climate.PoleAxis,Model.Weather.DaySeconds,Time);R.Overlay=Overlay;
             R.Field=Field;R.Positions=MoveTemp(Positions);R.Seconds=FPlatformTime::Seconds()-Start;return R;
         });
     }
@@ -322,7 +334,7 @@ private:
         WeatherView=FModuleManager::LoadModuleChecked<FPropertyEditorModule>(TEXT("PropertyEditor")).CreateStructureDetailView(Args,StructArgs,WeatherDraft);
         WeatherView->GetOnFinishedChangingPropertiesDelegate().AddLambda([this](const FPropertyChangedEvent&)
         {EditWeather(NSLOCTEXT("CE","WeatherEdit","Edit planet weather"),[this](auto& W){W=*reinterpret_cast<const FCEWeatherSettings*>(WeatherDraft->GetStructMemory());});});
-        WeatherView->GetDetailsView()->SetIsPropertyVisibleDelegate(FIsPropertyVisible::CreateLambda([](const FPropertyAndParent& P){return P.Property.GetOwnerStruct()!=FCEWeatherSettings::StaticStruct()||(P.Property.GetFName()!=TEXT("bEnabled")&&P.Property.GetFName()!=TEXT("Character"));}));
+        WeatherView->GetDetailsView()->SetIsPropertyVisibleDelegate(FIsPropertyVisible::CreateLambda([](const FPropertyAndParent& P){return P.Property.GetOwnerStruct()!=FCEWeatherSettings::StaticStruct()||(P.Property.GetFName()!=TEXT("bEnabled")&&P.Property.GetFName()!=TEXT("Character")&&P.Property.GetFName()!=TEXT("DaySeconds"));}));
         WeatherView->GetDetailsView()->ForceRefresh();
         WeatherDetailsBox->AddSlot().AutoHeight().Padding(0,1)[WeatherRow(WeatherView->GetWidget().ToSharedRef())];
         ClimateDraft=MakeShared<FStructOnScope>(FCEClimateSettings::StaticStruct());
