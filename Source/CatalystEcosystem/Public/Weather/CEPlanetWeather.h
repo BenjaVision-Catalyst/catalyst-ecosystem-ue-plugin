@@ -3,6 +3,7 @@
 #include "Model/CEPlanetEcosystem.h"
 #include "Fields/CSFieldProgram.h"
 class FCEWeatherFrontalField;
+struct FCEWeatherGlobeMesh;
 struct FCEWeatherSample
 {
     double TemperatureC=0;
@@ -31,3 +32,10 @@ private:
 
 /** Planet body-frame solar direction; identical basis/phase to the GT daily thermal forcing. */
 CATALYSTECOSYSTEM_API FVector CEWeatherSunDirection(FVector Pole,double RotationPeriodSeconds,double SimulationSeconds);
+
+/** Interpolate a canonical direction against a complete globe evaluation.
+ * The triangle hint can be retained by a moving consumer, or initialized to INDEX_NONE.
+ */
+CATALYSTECOSYSTEM_API bool CEInterpolateGlobeWeather(const FCEWeatherGlobeMesh& Mesh,
+    TConstArrayView<FCEWeatherSample> Samples, const FVector& BodyDirection,
+    int32& TriangleHint, FCEWeatherSample& Result);

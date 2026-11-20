@@ -16,6 +16,21 @@ bool FCEWeatherGlobeTest::RunTest(const FString&)
     for(const auto& Pair:Edges)TestEqual(TEXT("Closed topology has no longitude seam or pole boundary"),Pair.Value,2);
     TArray<FCEWeatherSample> Samples;
     for(const auto& D:M.Directions){auto& S=Samples.AddDefaulted_GetRef();S.PressureHpa=1013.25+12*D.Z+9*D.X*D.Y;S.TemperatureC=D.Z*40;S.RainMmHour=(1+D.X)*4;S.Wind=FVector::CrossProduct(FVector::ZAxisVector,D)*6;}
+    int32 Triangle=INDEX_NONE;
+    FCEWeatherSample Sample;
+    for(int32 Index : {0, 15, 640, M.Directions.Num()-1})
+    {
+        TestTrue(TEXT("Canonical vertex is covered"),CEInterpolateGlobeWeather(M,Samples,M.Directions[Index],Triangle,Sample));
+        TestTrue(TEXT("Vertex reproduces the field"),FMath::IsNearlyEqual(Sample.RainMmHour,Samples[Index].RainMmHour,1.e-8));
+        TestTrue(TEXT("Vertex preserves the tangent wind"),Sample.Wind.Equals(Samples[Index].Wind,1.e-8));
+    }
+    for(const FVector& Boundary : {FVector::ZAxisVector,-FVector::ZAxisVector,-FVector::XAxisVector})
+    {
+        FCEWeatherSample Other;
+        TestTrue(TEXT("First side of seam or pole is covered"),CEInterpolateGlobeWeather(M,Samples,Boundary+FVector(0,1.e-6,0),Triangle,Sample));
+        TestTrue(TEXT("Other side of seam or pole is covered"),CEInterpolateGlobeWeather(M,Samples,Boundary-FVector(0,1.e-6,0),Triangle,Other));
+        TestTrue(TEXT("Weather is continuous across the seam and poles"),FMath::IsNearlyEqual(Sample.TemperatureC,Other.TemperatureC,1.e-4)&&Sample.Wind.Equals(Other.Wind,1.e-4));
+    }
     const double Begin=FPlatformTime::Seconds();const auto O=CEBuildWeatherGlobe(M,Samples,1500,1013.25,0,true,true,true,false);
     TestEqual(TEXT("Continuous colour mesh retains shared topology"),O->MeshIndices,M.Indices);
     TestTrue(TEXT("Contours, labels and contour-anchored arrows exist"),O->Segments.Num()>0&&O->Labels.Num()>=2&&O->Flows.Num()>0);

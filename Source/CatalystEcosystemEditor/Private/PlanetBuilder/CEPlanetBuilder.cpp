@@ -2,6 +2,7 @@
 #if WITH_CE_LANDFORM
 #include "Model/CEPlanetEcosystem.h"
 #include "Climate/CEPlanetBiomePlacement.h"
+#include "Climate/CEPlanetWeatherInputs.h"
 #include "PlanetBuilder/CEBiomePreviewState.h"
 #include "Weather/CEPlanetWeather.h"
 #include "Weather/CEWeatherGlobe.h"
@@ -34,12 +35,6 @@
 #include "Editor.h"
 #include "PropertyCustomizationHelpers.h"
 #include "Engine/Selection.h"
-double CEPlanetSeaLevelMeters(const FCLCompiledPlanetRecipe& Plan)
-{
-    const auto* Ocean=Plan.Guides.FindByPredicate([](const auto& G){return G.Name==TEXT("OceanHeight");});
-    // No ocean guide means a dry planet, never a second independently authored sea.
-    return Ocean?Ocean->HeightMeters-Plan.BaseHeightMeters:-(Plan.RadiusMeters+Plan.BaseHeightMeters);
-}
 namespace
 {
 class FCEClimateDetails : public IDetailCustomization
@@ -238,29 +233,17 @@ private:
         }
         bWeatherDirty=false;WeatherRevision=Revision;NextWeatherViewAt=FPlatformTime::Seconds()+.2;
         auto Field=WeatherField;auto Positions=WeatherPositions;auto Model=Profile->Ecosystem;Model.Climate.SeaLevelMeters=CEPlanetSeaLevelMeters(*Plan);Model.Weather.DaySeconds=Plan->SourceRecipe->RotationPeriodSeconds;
-        const auto Time=WeatherClock.AcceptedSeconds();const int32 Seed=Context.Planet.IsValid()?Context.Planet->Recipe.Seed:0;
+        const auto Time=WeatherClock.AcceptedSeconds();
         const auto Mesh=WeatherMesh;
         auto Cached=RenderedWeatherTime==Time&&Field?WeatherSamples:TArray<FCEWeatherSample>();
         Stop=MakeShared<TAtomic<bool>,ESPMode::ThreadSafe>(false);auto Cancel=Stop;
-        WeatherWork=Async(EAsyncExecution::ThreadPool,[Field,Positions=MoveTemp(Positions),Cached=MoveTemp(Cached),Model,Placement,Plan,Time,Seed,Cancel,Mesh]()mutable
+        WeatherWork=Async(EAsyncExecution::ThreadPool,[Field,Positions=MoveTemp(Positions),Cached=MoveTemp(Cached),Model,Placement,Plan,Time,Cancel,Mesh]()mutable
         {
             FCEWeatherView R;R.ValidTime=Time;const double Start=FPlatformTime::Seconds();
             if(!Field)
             {
-                Field=MakeShared<FCEPlanetWeather,ESPMode::ThreadSafe>();TArray<double> Heights;Plan->SampleHeightsMeters(Mesh->Directions,Heights);
-                TArray<FVector> Normals;Normals.SetNumZeroed(Mesh->Directions.Num());TArray<FGuid> Biomes;Positions.Reserve(Mesh->Directions.Num());
-                for(int32 I=0;I<Mesh->Directions.Num();++I)Positions.Add(Mesh->Directions[I]*(Plan->RadiusMeters+Heights[I]));
-                for(int32 I=0;I<Mesh->Indices.Num();I+=3)
-                {
-                    const int32 A=Mesh->Indices[I],B=Mesh->Indices[I+1],C=Mesh->Indices[I+2];const FVector N=FVector::CrossProduct(Positions[B]-Positions[A],Positions[C]-Positions[A]);Normals[A]+=N;Normals[B]+=N;Normals[C]+=N;
-                }
-                TArray<FVector> CellDirections;for(const auto& C:Placement->Cells)CellDirections.Add(C.PositionMeters.GetSafeNormal());
-                for(int32 I=0;I<Positions.Num();++I)
-                {
-                    if(Cancel->Load())return R;Normals[I]=Normals[I].GetSafeNormal();if(FVector::DotProduct(Normals[I],Mesh->Directions[I])<0)Normals[I]*=-1;
-                    double Best=-2;FGuid Id;for(int32 J=0;J<CellDirections.Num();++J)if(Placement->Cells[J].bSupported){const double Dot=FVector::DotProduct(CellDirections[J],Mesh->Directions[I]);if(Dot>Best){Best=Dot;Id=Placement->Cells[J].BiomeId;}}Biomes.Add(Id);
-                }
-                if(Cancel->Load()||!Field->Initialize(Model,Positions,Normals,Plan->RadiusMeters+Plan->BaseHeightMeters,Seed,R.Error,Biomes))return R;
+                Field=MakeShared<FCEPlanetWeather,ESPMode::ThreadSafe>();
+                if(!CEBakePlanetWeatherGlobe(*Plan,*Placement,*Mesh,Model,*Field,Positions,R.Error,Cancel.Get()))return R;
             }
             if(Cancel->Load())return R;
             if(Cached.Num()==Mesh->Directions.Num())R.Samples=MoveTemp(Cached);else if(!Field->Evaluate(Time,R.Samples,R.Error))return R;

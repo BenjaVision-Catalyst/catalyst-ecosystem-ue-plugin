@@ -7,3 +7,13 @@ struct CATALYSTECOSYSTEM_API FCEWeatherGlobeMesh
     TArray<int32> Indices;
     static FCEWeatherGlobeMesh Make();
 };
+
+/** A reusable spherical lookup into the complete canonical weather evaluation. */
+struct FCEWeatherGlobeStencil
+{
+    FIntVector Vertices;
+    FVector Weights;
+};
+
+CATALYSTECOSYSTEM_API bool CELocateWeatherGlobeTriangle(const FCEWeatherGlobeMesh& Mesh,
+    const FVector& BodyDirection, int32& TriangleHint, FCEWeatherGlobeStencil& Stencil);

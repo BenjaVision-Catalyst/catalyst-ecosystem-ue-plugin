@@ -211,6 +211,13 @@ are recorded in [Weather qualification](WeatherQualification.md).
 
 ## Planet clock and fronts
 
+The Designer and game host use the same native globe-input bake. It takes the
+accepted recipe and biome assignment and freezes the full canonical sampling
+context used by the frontal pass. Game renderers can interpolate a complete
+evaluation inside an icosphere triangle. A radial ray provides continuous
+weights across triangle boundaries, and interpolated wind is projected back
+onto the local tangent plane.
+
 Planet owns `RotationPeriodSeconds` (60–315,576,000 simulation seconds). The Planet
 inspector's Rotation Speed (degrees/second) and Revolution time (hours per axial
 turn) edit this single value, so they cannot drift. Existing recipes default to
